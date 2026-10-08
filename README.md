@@ -39,7 +39,7 @@ OPENAI_MODEL=gpt-4o
 ANALYSIS_ACCESS_TOKEN=
 ```
 
-3. Guarda y reinicia el servidor (`Ctrl+C`, luego `npm run dev`). El selector **Gemini · Visión real (gratis)** viene seleccionado por defecto. Carga una foto y pulsa **Analizar cultivo**.
+3. Guarda y reinicia el servidor (`Ctrl+C`, luego `npm run dev`). El selector **Gemini · Visión IA** viene seleccionado por defecto. Carga una foto y pulsa **Analizar cultivo**.
 
 El servidor prioriza Gemini cuando encuentra `GEMINI_API_KEY`; si no está configurada, usa OpenAI cuando `OPENAI_API_KEY` exista. Las claves permanecen en el servidor y nunca llevan prefijo `NEXT_PUBLIC_`. La cuota gratuita no es ilimitada y puede cambiar o agotarse; Google indica que el contenido del nivel gratis puede utilizarse para mejorar sus productos. Evita enviar fotos confidenciales. Crear una clave no evita las cuotas.
 

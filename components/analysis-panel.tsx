@@ -160,7 +160,7 @@ export default function AnalysisPanel({
               onChange={(e) => setMode(e.target.value as "demo" | "real")}
             >
               <option value="demo">Demostración</option>
-              <option value="real">Gemini · Visión real (gratis)</option>
+              <option value="real">Gemini · Visión IA</option>
             </select>
           </label>
         </div>
