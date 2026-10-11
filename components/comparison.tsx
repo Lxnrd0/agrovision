@@ -4,42 +4,110 @@ import { useState } from "react";
 import { compare } from "@/lib/metrics";
 import {
   age,
-  calibration,
   eligible,
   growth,
   origin,
+  plantKey,
   value,
 } from "@/lib/tracking";
 import type { FieldRecord } from "@/lib/types";
 import type { Metric } from "@/lib/tracking";
-
-function format(
-  number: number | null | undefined,
-  decimals = 2,
-) {
-  return number == null ? "—" : number.toFixed(decimals);
-}
 
 const metrics: {
   key: Metric;
   label: string;
   unit: string;
 }[] = [
-  { key: "diameterCm", label: "Diámetro", unit: "cm" },
   { key: "heightCm", label: "Altura", unit: "cm" },
   { key: "leafCount", label: "Hojas", unit: "hojas" },
+  { key: "diameterCm", label: "Diámetro", unit: "cm" },
 ];
 
-function originLabel(
-  record: FieldRecord,
-  metric: Metric,
+function format(
+  number: number | null | undefined,
+  decimals = 2,
 ) {
-  const source = origin(record, metric);
+  return number == null || !Number.isFinite(number)
+    ? "—"
+    : number.toFixed(decimals);
+}
 
-  if (source === "manual") return "Manual";
-  if (source === "ia") return "Estimación IA";
+function dateLabel(date: string | undefined) {
+  if (!date) return "—";
 
-  return "Sin verificar";
+  const parts = date.split("-");
+
+  return parts.length === 3
+    ? `${parts[2]}/${parts[1]}/${parts[0]}`
+    : date;
+}
+
+function manualValue(record: FieldRecord, metric: Metric) {
+  return origin(record, metric) === "manual"
+    ? value(record, metric)
+    : null;
+}
+
+function pairedErrors(records: FieldRecord[], metric: Metric) {
+  const pairs: {
+    record: FieldRecord;
+    manual: number;
+    estimate: number;
+    error: number;
+  }[] = [];
+
+  for (const record of records) {
+    const manual = manualValue(record, metric);
+
+    const estimate =
+      metric === "diameterCm"
+        ? record.estimatedDiameterCm
+        : metric === "leafCount"
+          ? record.estimatedLeafCount
+          : null;
+
+    if (
+      manual === null ||
+      typeof estimate !== "number" ||
+      !Number.isFinite(estimate) ||
+      estimate < 0 ||
+      (metric === "diameterCm" && estimate === 0) ||
+      (metric === "leafCount" && !Number.isInteger(estimate))
+    ) {
+      continue;
+    }
+
+    pairs.push({
+      record,
+      manual,
+      estimate,
+      error: estimate - manual,
+    });
+  }
+
+  const n = pairs.length;
+  const percentagePairs = pairs.filter((pair) => pair.manual > 0);
+
+  return {
+    pairs,
+    n,
+    mae: n
+      ? pairs.reduce((sum, pair) => sum + Math.abs(pair.error), 0) / n
+      : null,
+    bias: n
+      ? pairs.reduce((sum, pair) => sum + pair.error, 0) / n
+      : null,
+    mape: percentagePairs.length
+      ? percentagePairs.reduce(
+          (sum, pair) => sum + Math.abs(pair.error) / pair.manual,
+          0,
+        ) /
+        percentagePairs.length *
+        100
+      : null,
+    percentageN: percentagePairs.length,
+    plants: new Set(pairs.map((pair) => plantKey(pair.record))).size,
+  };
 }
 
 export default function Comparison({
@@ -47,29 +115,22 @@ export default function Comparison({
 }: {
   records: FieldRecord[];
 }) {
-  const [zone, setZone] = useState("Todos");
+  const [zone, setZone] = useState("");
   const [minAge, setMinAge] = useState("");
   const [maxAge, setMaxAge] = useState("");
+  const [selectedPlant, setSelectedPlant] = useState("");
 
-  const [measureOrigin, setMeasureOrigin] = useState<
-    "manual" | "ia"
-  >("manual");
+  const real = records.filter((record) => record.source !== "demo");
 
-  const real = records.filter(
-    (record) => record.source !== "demo",
-  );
-
-  const zones = [...new Set(real.map((record) => record.zone))];
+  const zones = [...new Set(real.map((record) => record.zone))]
+    .sort((a, b) => a.localeCompare(b));
 
   const selected = real.filter(
-    (record) => zone === "Todos" || record.zone === zone,
+    (record) => !zone || record.zone === zone,
   );
 
-  const minimum =
-    minAge === "" ? undefined : Number(minAge);
-
-  const maximum =
-    maxAge === "" ? undefined : Number(maxAge);
+  const minimum = minAge === "" ? undefined : Number(minAge);
+  const maximum = maxAge === "" ? undefined : Number(maxAge);
 
   const invalidRange =
     (minimum !== undefined &&
@@ -80,28 +141,66 @@ export default function Comparison({
       maximum !== undefined &&
       minimum > maximum);
 
-  const rows = invalidRange
-    ? []
-    : compare(selected, {
-        minAge: minimum,
-        maxAge: maximum,
-        origin: measureOrigin,
-      }).sort(
-        (a, b) =>
-          a.name.localeCompare(b.name) ||
-          a.dose.localeCompare(b.dose),
-      );
-
   const observations = invalidRange
     ? []
     : selected
-        .filter(
-          (record) =>
+        .filter((record) => {
+          const plantAge = age(record);
+
+          return (
             eligible(record) &&
-            age(record)! >= (minimum ?? 0) &&
-            age(record)! <= (maximum ?? Infinity),
+            plantAge !== null &&
+            plantAge >= (minimum ?? 0) &&
+            plantAge <= (maximum ?? Infinity)
+          );
+        })
+        .sort(
+          (a, b) =>
+            b.date.localeCompare(a.date) ||
+            b.createdAt.localeCompare(a.createdAt),
+        );
+
+  // Cada lote conserva su propia comparación.
+  const rows = invalidRange
+    ? []
+    : [...new Set(selected.map((record) => record.zone))]
+        .flatMap((lot) =>
+          compare(
+            selected.filter((record) => record.zone === lot),
+            {
+              minAge: minimum,
+              maxAge: maximum,
+              origin: "manual",
+            },
+          ).map((row) => ({
+            ...row,
+            zone: lot,
+            tableKey: JSON.stringify([lot, row.key]),
+          })),
         )
-        .sort((a, b) => b.date.localeCompare(a.date));
+        .sort(
+          (a, b) =>
+            a.zone.localeCompare(b.zone) ||
+            a.name.localeCompare(b.name) ||
+            a.dose.localeCompare(b.dose),
+        );
+
+  const plants = [
+    ...new Map(
+      observations.map((record) => [plantKey(record), record]),
+    ).values(),
+  ].sort((a, b) =>
+    (a.plantId ?? "").localeCompare(
+      b.plantId ?? "",
+      "es",
+      { numeric: true },
+    ),
+  );
+
+  const visibleObservations = observations.filter(
+    (record) =>
+      !selectedPlant || plantKey(record) === selectedPlant,
+  );
 
   const incomplete = selected.filter(
     (record) => !eligible(record),
@@ -111,37 +210,58 @@ export default function Comparison({
     (record) => record.source === "demo",
   ).length;
 
-  const errors = calibration(observations);
+  const measuredObservations = observations.filter((record) =>
+    metrics.some((metric) => manualValue(record, metric.key) !== null),
+  ).length;
+
+  const checks = [
+    {
+      label: "Diámetro",
+      unit: "cm",
+      result: pairedErrors(observations, "diameterCm"),
+    },
+    {
+      label: "Número de hojas",
+      unit: "hojas",
+      result: pairedErrors(observations, "leafCount"),
+    },
+  ];
 
   return (
     <>
       <div className="section-heading">
         <div>
-          <h2>Seguimiento real del rabanito</h2>
+          <h2>Comparación del crecimiento</h2>
           <p>
-            Compara plantas de edad semejante por tratamiento
-            y dosis.
+            Resultados de campo por lote, tratamiento y dosis.
+            Los promedios usan mediciones manuales.
           </p>
         </div>
       </div>
 
-      <div className="filter-bar">
-        <label>
+      <div
+        className="filter-bar"
+        style={{ flexWrap: "wrap", alignItems: "flex-end", gap: 12 }}
+      >
+        <label style={{ flex: "1 1 180px" }}>
           Lote
           <select
             value={zone}
-            onChange={(event) => setZone(event.target.value)}
+            onChange={(event) => {
+              setZone(event.target.value);
+              setSelectedPlant("");
+            }}
           >
-            <option value="Todos">Todos los lotes</option>
+            <option value="">Todos los lotes, por separado</option>
             {zones.map((item) => (
               <option key={item} value={item}>
-                {item}
+                {item || "Sin lote"}
               </option>
             ))}
           </select>
         </label>
 
-        <label>
+        <label style={{ flex: "1 1 140px" }}>
           Edad mínima (días)
           <input
             type="number"
@@ -149,13 +269,14 @@ export default function Comparison({
             step="1"
             value={minAge}
             placeholder="Sin mínimo"
-            onChange={(event) =>
-              setMinAge(event.target.value)
-            }
+            onChange={(event) => {
+              setMinAge(event.target.value);
+              setSelectedPlant("");
+            }}
           />
         </label>
 
-        <label>
+        <label style={{ flex: "1 1 140px" }}>
           Edad máxima (días)
           <input
             type="number"
@@ -163,133 +284,163 @@ export default function Comparison({
             step="1"
             value={maxAge}
             placeholder="Sin máximo"
-            onChange={(event) =>
-              setMaxAge(event.target.value)
-            }
+            onChange={(event) => {
+              setMaxAge(event.target.value);
+              setSelectedPlant("");
+            }}
           />
         </label>
 
-        <label>
-          Origen de las medidas
-          <select
-            value={measureOrigin}
-            onChange={(event) =>
-              setMeasureOrigin(
-                event.target.value as "manual" | "ia",
-              )
-            }
-          >
-            <option value="manual">
-              Manual: regla, calibre o conteo
-            </option>
-            <option value="ia">
-              Estimación IA sin validar
-            </option>
-          </select>
-        </label>
+        <button
+          type="button"
+          className="button secondary"
+          onClick={() => {
+            setZone("");
+            setMinAge("");
+            setMaxAge("");
+            setSelectedPlant("");
+          }}
+        >
+          Limpiar filtros
+        </button>
       </div>
 
       {invalidRange && (
-        <p role="alert">
-          Las edades deben ser días enteros, positivos o cero.
-          El mínimo no puede superar el máximo.
+        <p role="alert" style={{ margin: "12px 0" }}>
+          Usa edades enteras de cero o más días.
+          La edad mínima no puede superar la máxima.
         </p>
       )}
 
       <div className="table-note">
         <p>
-          {incomplete} registros sin identificación, fecha de
-          siembra o dosis quedan fuera de esta comparación.
-          {" "}
-          {examples} ejemplos excluidos. Los registros antiguos
-          se conservan en la bitácora.
+          En los filtros actuales: <strong>{plants.length}</strong>{" "}
+          plantas distintas y <strong>{observations.length}</strong>{" "}
+          observaciones; {measuredObservations} tienen al menos una
+          medida manual válida.
+        </p>
+        <p>
+          Se excluyen {incomplete} registros incompletos del lote
+          seleccionado y {examples} ejemplos de la aplicación.
+          Los registros se conservan en la bitácora.
         </p>
       </div>
 
       <div className="panel table-panel">
         <div className="table-scroll">
           <table>
+            <caption
+              style={{
+                textAlign: "left",
+                padding: 16,
+                color: "var(--muted)",
+              }}
+            >
+              Última observación de cada planta dentro del rango de edad
+            </caption>
+
             <thead>
               <tr>
+                <th>Lote</th>
                 <th>Tratamiento</th>
-                <th>Dosis</th>
+                <th>Dosis / frecuencia</th>
                 <th>Plantas distintas</th>
                 <th>Edad (días)</th>
-                <th>Diámetro medio (cm)</th>
                 <th>Altura media (cm)</th>
                 <th>Hojas medias</th>
+                <th>Diámetro medio (cm)</th>
               </tr>
             </thead>
 
             <tbody>
               {rows.map((row) => (
-                <tr key={row.key}>
-                  <td>
-                    <strong>{row.name}</strong>
-                  </td>
+                <tr key={row.tableKey}>
+                  <td>{row.zone}</td>
+                  <td><strong>{row.name}</strong></td>
                   <td>{row.dose}</td>
                   <td>{row.count}</td>
                   <td>
-                    {row.minAge}–{row.maxAge}
-                  </td>
-                  <td>
-                    {format(row.diameter)}
-                    <small> · n={row.measured}</small>
+                    {row.minAge === row.maxAge
+                      ? row.minAge
+                      : `${row.minAge}–${row.maxAge}`}
                   </td>
                   <td>
                     {format(row.height)}
-                    <small> · n={row.heightN}</small>
+                    <br />
+                    <small>n = {row.heightN}</small>
                   </td>
                   <td>
                     {format(row.leaves, 1)}
-                    <small> · n={row.leavesN}</small>
+                    <br />
+                    <small>n = {row.leavesN}</small>
+                  </td>
+                  <td>
+                    {format(row.diameter)}
+                    <br />
+                    <small>n = {row.measured}</small>
                   </td>
                 </tr>
               ))}
+
+              {!rows.length && (
+                <tr>
+                  <td colSpan={8}>
+                    {invalidRange
+                      ? "Corrige el rango de edad."
+                      : "No hay plantas con identificación, siembra y dosis en este rango."}
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
-
-          {!rows.length && (
-            <div className="empty-state">
-              No hay plantas con datos suficientes en este
-              rango.
-            </div>
-          )}
         </div>
 
         <div className="table-note">
           <p>
-            Se usa una observación por planta: la última
-            dentro del rango de edad. Cada promedio incluye
-            solamente medidas válidas del origen seleccionado.
-            “n” indica cuántas medidas lo sustentan. Una medida
-            ausente no cuenta como cero.
+            n es la cantidad de mediciones manuales válidas del
+            promedio. “—” significa que no hay medidas suficientes;
+            los datos faltantes no cuentan como cero.
           </p>
-        </div>
-
-        <div className="table-note">
           <p>
-            Estos resultados son descriptivos. Las diferencias
-            pueden depender de la edad, el suelo, el riego y
-            las condiciones del ensayo. La tabla no demuestra
-            que un fertilizante sea mejor.
+            Una planta puede aparecer aunque todavía no tenga
+            mediciones. Su observación más reciente no se sustituye
+            por una medida antigua para completar un promedio.
+          </p>
+          <p>
+            Para comparar edades semejantes, elige un rango estrecho.
+            Estos resultados describen lo registrado; por sí solos
+            no demuestran qué fertilizante funciona mejor.
           </p>
         </div>
       </div>
 
-      <div
-        className="section-heading"
-        style={{ marginTop: 24 }}
-      >
+      <div className="section-heading" style={{ marginTop: 28 }}>
         <div>
-          <h2>Observaciones y crecimiento</h2>
+          <h2>Seguimiento de cada planta</h2>
           <p>
-            Cambio desde la medida válida anterior de la misma
-            planta, tratamiento y origen. Esa visita puede
-            estar fuera del filtro de edad.
+            Mediciones y cambio desde la medida manual válida anterior.
           </p>
         </div>
       </div>
+
+      <label style={{ maxWidth: 480, marginBottom: 16 }}>
+        Planta que deseas revisar
+        <select
+          value={selectedPlant}
+          onChange={(event) => setSelectedPlant(event.target.value)}
+        >
+          <option value="">Todas las plantas del rango</option>
+          {plants.map((plant) => (
+            <option
+              key={plantKey(plant)}
+              value={plantKey(plant)}
+            >
+              {plant.plantId} · {plant.zone} · Siembra{" "}
+              {dateLabel(plant.sowingDate)}
+            </option>
+          ))}
+        </select>
+      </label>
 
       <div className="panel table-panel">
         <div className="table-scroll">
@@ -300,14 +451,14 @@ export default function Comparison({
                 <th>Siembra / observación</th>
                 <th>Edad</th>
                 <th>Tratamiento / dosis</th>
-                <th>Medidas y origen</th>
-                <th>Cambio desde medida previa</th>
-                <th>Síntomas / fotografía</th>
+                <th>Medidas manuales</th>
+                <th>Cambio desde medida anterior</th>
+                <th>Estado / síntomas / fotografía</th>
               </tr>
             </thead>
 
             <tbody>
-              {observations.map((record) => (
+              {visibleObservations.map((record) => (
                 <tr key={record.id}>
                   <td>
                     <strong>{record.plantId}</strong>
@@ -316,9 +467,11 @@ export default function Comparison({
                   </td>
 
                   <td>
-                    Siembra: {record.sowingDate}
+                    Siembra: {dateLabel(record.sowingDate)}
                     <br />
-                    Observación: {record.date}
+                    Observación: {dateLabel(record.date)}
+                    <br />
+                    <small>{record.collaborator}</small>
                   </td>
 
                   <td>{age(record)} días</td>
@@ -326,50 +479,58 @@ export default function Comparison({
                   <td>
                     {record.fertilizer}
                     <br />
-                    {record.dose}
-                  </td>
-
-                  <td>
-                    {metrics.map((metric) => (
-                      <div key={metric.key}>
-                        {metric.label}:{" "}
-                        {format(
-                          value(record, metric.key),
-                          metric.key === "leafCount" ? 0 : 2,
-                        )}{" "}
-                        {metric.unit}
-                        {" · "}
-                        {originLabel(record, metric.key)}
-                      </div>
-                    ))}
+                    <small>{record.dose}</small>
                   </td>
 
                   <td>
                     {metrics.map((metric) => {
-                      const change = growth(
-                        record,
-                        records,
-                        metric.key,
-                      );
+                      const measurement = manualValue(record, metric.key);
 
                       return (
-                        <div key={metric.key}>
+                        <div key={metric.key} style={{ marginBottom: 8 }}>
                           {metric.label}:{" "}
+                          {measurement === null
+                            ? "No medido"
+                            : `${format(
+                                measurement,
+                                metric.key === "leafCount" ? 0 : 2,
+                              )} ${metric.unit}`}
+                        </div>
+                      );
+                    })}
+                  </td>
+
+                  <td>
+                    {metrics.map((metric) => {
+                      const measured = manualValue(record, metric.key);
+
+                      const change = measured === null
+                        ? null
+                        : growth(record, records, metric.key);
+
+                      return (
+                        <div key={metric.key} style={{ marginBottom: 12 }}>
+                          <strong>{metric.label}: </strong>
+
                           {change ? (
                             <>
-                              {change.delta >= 0 ? "+" : ""}
-                              {format(change.delta)}{" "}
+                              {change.delta > 0 ? "+" : ""}
+                              {format(
+                                change.delta,
+                                metric.key === "leafCount" ? 0 : 2,
+                              )}{" "}
                               {metric.unit} en {change.days} días
                               <br />
-                              {format(change.perDay)}{" "}
-                              {metric.unit}/día
-                              <br />
-                              Desde {change.previousDate}
-                              {" · "}
-                              {originLabel(record, metric.key)}
+                              <small>
+                                {format(change.perDay)} {metric.unit}/día
+                                <br />
+                                Desde {dateLabel(change.previousDate)}
+                              </small>
                             </>
+                          ) : measured === null ? (
+                            "Sin medida manual actual"
                           ) : (
-                            "—"
+                            "Sin medida manual anterior"
                           )}
                         </div>
                       );
@@ -377,19 +538,27 @@ export default function Comparison({
                   </td>
 
                   <td>
-                    {record.observations.join(" · ") ||
-                      "Sin observaciones"}
+                    <strong>{record.health}</strong>
+                    <p>
+                      {record.observations.join(" · ") ||
+                        "Sin observaciones escritas"}
+                    </p>
 
                     {record.image && (
-                      <details>
-                        <summary>Ver fotografía</summary>
+                      <details style={{ marginTop: 8 }}>
+                        <summary style={{ cursor: "pointer" }}>
+                          Ver fotografía
+                        </summary>
                         <img
                           src={record.image}
                           alt={`Rabanito ${record.plantId}, ${record.date}`}
                           loading="lazy"
                           style={{
-                            width: 140,
+                            display: "block",
+                            width: 200,
                             maxWidth: "100%",
+                            marginTop: 8,
+                            borderRadius: 8,
                           }}
                         />
                       </details>
@@ -397,51 +566,149 @@ export default function Comparison({
                   </td>
                 </tr>
               ))}
+
+              {!visibleObservations.length && (
+                <tr>
+                  <td colSpan={7}>
+                    No hay observaciones para los filtros seleccionados.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
+        </div>
 
-          {!observations.length && (
-            <div className="empty-state">
-              Registra una planta con su identificación,
-              fecha de siembra y dosis.
-            </div>
-          )}
+        <div className="table-note">
+          <p>
+            El cambio compara la misma planta y tratamiento.
+            La medida anterior puede estar fuera del filtro de edad.
+            Un cambio negativo indica una disminución registrada;
+            revisa las notas y el criterio de medición.
+          </p>
         </div>
       </div>
 
-      <div
-        className="panel"
-        style={{ padding: 24, marginTop: 24 }}
-      >
-        <h2>Comprobación de estimaciones de diámetro</h2>
-
-        <p>
-          Se compara la estimación original de una foto con
-          el diámetro manual del mismo registro. Estos errores
-          describen los pares guardados; no corrigen nuevas
-          fotos ni validan la confianza del modelo.
-        </p>
-
-        <p>
-          <strong>{errors.n} pares de medidas</strong>
-        </p>
-
-        <p>
-          Error absoluto medio: {format(errors.mae)} cm
-          <br />
-          Sesgo (IA menos manual): {format(errors.bias)} cm
-          <br />
-          Error porcentual absoluto medio:{" "}
-          {format(errors.mape, 1)}%
-        </p>
-
-        {errors.n === 0 && (
+      <div className="section-heading" style={{ marginTop: 28 }}>
+        <div>
+          <h2>Comprobación de las estimaciones de IA</h2>
           <p>
-            Aún no hay pares. Analiza una foto con escala y,
-            al registrarla, introduce el diámetro medido
-            con regla o calibre.
+            Estimación original frente a medición manual del mismo
+            registro. Se aplican los filtros de lote y edad.
           </p>
-        )}
+        </div>
+      </div>
+
+      <div className="panel table-panel">
+        <div className="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Medida</th>
+                <th>Pares válidos</th>
+                <th>Plantas distintas</th>
+                <th>Error absoluto medio</th>
+                <th>Sesgo: IA − manual</th>
+                <th>Error porcentual medio</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {checks.map(({ label, unit, result }) => (
+                <tr key={label}>
+                  <td>{label}</td>
+                  <td>{result.n}</td>
+                  <td>{result.plants}</td>
+                  <td>
+                    {result.mae === null
+                      ? "—"
+                      : `${format(result.mae)} ${unit}`}
+                  </td>
+                  <td>
+                    {result.bias === null
+                      ? "—"
+                      : `${format(result.bias)} ${unit}`}
+                  </td>
+                  <td>
+                    {result.mape === null
+                      ? "—"
+                      : `${format(result.mape, 1)} %`}
+                    <br />
+                    <small>n = {result.percentageN}</small>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="table-note">
+          <p>
+            El error absoluto medio muestra cuánto se aleja la IA
+            de la medición manual. Un sesgo positivo indica
+            sobreestimación; uno negativo, subestimación.
+          </p>
+          <p>
+            El error porcentual excluye referencias manuales iguales
+            a cero. Varias observaciones de una misma planta cuentan
+            como varios pares, pero no como plantas independientes.
+          </p>
+          <p>
+            Estos cálculos comprueban los registros disponibles.
+            No corrigen automáticamente nuevas estimaciones ni
+            equivalen al porcentaje de confianza de Gemini.
+          </p>
+        </div>
+
+        <details style={{ padding: 16 }}>
+          <summary style={{ cursor: "pointer" }}>
+            Revisar los pares utilizados
+          </summary>
+
+          <div className="table-scroll" style={{ marginTop: 12 }}>
+            <table>
+              <thead>
+                <tr>
+                  <th>Planta / lote</th>
+                  <th>Observación</th>
+                  <th>Medida</th>
+                  <th>Manual</th>
+                  <th>Estimación IA</th>
+                  <th>Diferencia</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {checks.flatMap(({ label, unit, result }) =>
+                  result.pairs.map((pair) => (
+                    <tr key={`${label}-${pair.record.id}`}>
+                      <td>
+                        {pair.record.plantId} · {pair.record.zone}
+                      </td>
+                      <td>{dateLabel(pair.record.date)}</td>
+                      <td>{label}</td>
+                      <td>{format(pair.manual)} {unit}</td>
+                      <td>{format(pair.estimate)} {unit}</td>
+                      <td>
+                        {pair.error > 0 ? "+" : ""}
+                        {format(pair.error)} {unit}
+                      </td>
+                    </tr>
+                  )),
+                )}
+
+                {checks.every((check) => check.result.n === 0) && (
+                  <tr>
+                    <td colSpan={6}>
+                      Aún no hay pares. Guarda un análisis de IA
+                      junto con una medición manual de la misma planta
+                      y de la misma observación.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </details>
       </div>
     </>
   );
