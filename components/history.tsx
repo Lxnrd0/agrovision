@@ -492,6 +492,20 @@ export default function History({
             </p>
           )}
 
+          <h3>Observaciones originales de IA</h3>
+
+          {(details.aiObservations ?? []).length ? (
+            details.aiObservations!.map((item, index) => (
+              <p className="detail-copy" key={index}>
+                {item}
+              </p>
+            ))
+          ) : (
+            <p className="detail-copy">
+              Sin observaciones originales de IA guardadas.
+            </p>
+          )}
+
           <h3>Recomendaciones del análisis</h3>
 
           {details.recommendations.length ? (
