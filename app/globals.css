@@ -74,8 +74,4 @@
 }
 ```[cite: 1]
 
-### 2. Verifica la importación en `app/layout.tsx`
-Confirma que el archivo raíz de tu aplicación importe los estilos globales correctamente arriba del todo:
-
-```tsx
-import './globals.css'
+Copia todo este bloque, pégalo en el archivo `app/globals.css` en GitHub, dale a **Commit changes** y verás que Vercel compila sin errores al instante.
