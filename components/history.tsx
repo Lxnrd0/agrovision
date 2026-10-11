@@ -11,6 +11,7 @@ import {
   MapPin,
   Ruler,
   NotebookPen,
+  Pencil,
 } from "lucide-react";
 
 import type { FieldRecord } from "@/lib/types";
@@ -18,7 +19,16 @@ import type { Metric } from "@/lib/tracking";
 import { age, origin, value } from "@/lib/tracking";
 import { Badge, Modal } from "./ui";
 
+type HistoryProps = {
+  records: FieldRecord[];
+  onDelete: (record: FieldRecord) => void;
+  onNew: () => void;
+  onEdit?: (record: FieldRecord) => void;
+};
+
 function sourceLabel(record: FieldRecord, metric: Metric) {
+  if (value(record, metric) === null) return "Sin medida";
+
   const source = origin(record, metric);
 
   if (source === "manual") return "Manual";
@@ -39,26 +49,53 @@ function measurement(
   return `${measure} ${unit} · ${sourceLabel(record, metric)}`;
 }
 
+function dateLabel(date: string | undefined) {
+  if (!date) return "Sin registrar";
+
+  const parts = date.split("-");
+
+  return parts.length === 3
+    ? `${parts[2]}/${parts[1]}/${parts[0]}`
+    : date;
+}
+
+function initials(name: string) {
+  return (
+    name
+      .trim()
+      .split(/\s+/)
+      .map((word) => word[0] || "")
+      .slice(0, 2)
+      .join("")
+      .toUpperCase() || "?"
+  );
+}
+
 export default function History({
   records,
   onDelete,
   onNew,
-}: {
-  records: FieldRecord[];
-  onDelete: (record: FieldRecord) => void;
-  onNew: () => void;
-}) {
+  onEdit,
+}: HistoryProps) {
   const [query, setQuery] = useState("");
   const [health, setHealth] = useState("Todos");
-  const [zone, setZone] = useState("Todos");
+  const [zone, setZone] = useState("");
   const [recordOrigin, setRecordOrigin] = useState("Todos");
-  const [details, setDetails] = useState<FieldRecord | null>(null);
+  const [detailsId, setDetailsId] = useState<string | null>(null);
+
+  const details = records.find(
+    (record) => record.id === detailsId,
+  );
+
+  const zones = [
+    ...new Set(records.map((record) => record.zone)),
+  ].sort((a, b) => a.localeCompare(b));
 
   const filtered = records
     .filter(
       (record) =>
         (health === "Todos" || record.health === health) &&
-        (zone === "Todos" || record.zone === zone) &&
+        (!zone || record.zone === zone) &&
         (recordOrigin === "Todos" ||
           (recordOrigin === "Reales"
             ? record.source !== "demo"
@@ -78,16 +115,33 @@ export default function History({
           .toLowerCase()
           .includes(query.trim().toLowerCase()),
     )
-    .sort((a, b) => b.date.localeCompare(a.date));
+    .sort(
+      (a, b) =>
+        b.date.localeCompare(a.date) ||
+        b.createdAt.localeCompare(a.createdAt),
+    );
+
+  function editRecord(record: FieldRecord) {
+    if (!onEdit) return;
+
+    setDetailsId(null);
+    onEdit(record);
+  }
 
   return (
     <>
       <div className="section-heading">
         <div>
-          <h2>Lo que crece, queda registrado.</h2>
-          <p>Revisa las visitas y mediciones de cada rabanito.</p>
+          <h2>Bitácora de seguimiento</h2>
+          <p>
+            Cada registro es una visita a la planta.
+            Revisa sus medidas, fotografías y observaciones.
+          </p>
         </div>
-        <Badge tone="gray">{filtered.length} registros</Badge>
+
+        <Badge tone="gray">
+          {filtered.length} observaciones
+        </Badge>
       </div>
 
       <div className="filter-bar">
@@ -95,7 +149,7 @@ export default function History({
           <Search size={18} />
           <input
             aria-label="Buscar en bitácora"
-            placeholder="Buscar planta, colaborador, abono o dosis…"
+            placeholder="Buscar planta, responsable, abono o dosis…"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
           />
@@ -108,14 +162,13 @@ export default function History({
           value={zone}
           onChange={(event) => setZone(event.target.value)}
         >
-          <option value="Todos">Todos los lotes</option>
-          {[...new Set(records.map((record) => record.zone))].map(
-            (item) => (
-              <option key={item} value={item}>
-                {item}
-              </option>
-            ),
-          )}
+          <option value="">Todos los lotes</option>
+
+          {zones.map((item) => (
+            <option key={item} value={item}>
+              {item || "Sin lote"}
+            </option>
+          ))}
         </select>
 
         <select
@@ -132,7 +185,9 @@ export default function History({
         <select
           aria-label="Filtrar registros reales o ejemplos"
           value={recordOrigin}
-          onChange={(event) => setRecordOrigin(event.target.value)}
+          onChange={(event) =>
+            setRecordOrigin(event.target.value)
+          }
         >
           <option value="Todos">Todos los registros</option>
           <option value="Reales">Registros reales</option>
@@ -159,7 +214,13 @@ export default function History({
                   )}
 
                   <Badge
-                    tone={record.health === "Sano" ? "green" : "orange"}
+                    tone={
+                      record.health === "Sano"
+                        ? "green"
+                        : record.health === "Enfermo"
+                          ? "orange"
+                          : "gray"
+                    }
                   >
                     {record.health}
                   </Badge>
@@ -167,7 +228,7 @@ export default function History({
                   <button
                     type="button"
                     className="record-image-delete"
-                    title="Eliminar registro"
+                    title="Eliminar observación"
                     aria-label={`Eliminar observación de ${record.plantId || record.zone} del ${record.date}`}
                     onClick={() => onDelete(record)}
                   >
@@ -183,12 +244,7 @@ export default function History({
                   <div className="record-meta">
                     <span>
                       <CalendarDays size={13} />
-                      {new Date(
-                        `${record.date}T12:00:00`,
-                      ).toLocaleDateString("es-PE", {
-                        day: "numeric",
-                        month: "short",
-                      })}
+                      {dateLabel(record.date)}
                     </span>
 
                     <span>
@@ -200,7 +256,7 @@ export default function History({
                   <h3>
                     {record.plantId || "Planta sin identificar"}
                     {" · "}
-                    {record.crop.split(" · ")[0]}
+                    Rabanito
                   </h3>
 
                   <p>
@@ -215,13 +271,16 @@ export default function History({
                       : `${plantAge} días desde la siembra`}
                   </p>
 
-                  <div className="record-values">
+                  <div
+                    className="record-values"
+                    style={{ flexWrap: "wrap", gap: 12 }}
+                  >
                     <span>
                       <Ruler size={16} />
                       <strong>
-                        {value(record, "diameterCm") ?? "—"}
+                        {value(record, "heightCm") ?? "—"}
                       </strong>
-                      {" "}cm
+                      {" "}cm de altura
                     </span>
 
                     <span>
@@ -231,22 +290,27 @@ export default function History({
                       </strong>
                       {" "}hojas
                     </span>
+
+                    <span>
+                      <Ruler size={16} />
+                      <strong>
+                        {value(record, "diameterCm") ?? "—"}
+                      </strong>
+                      {" "}cm de diámetro
+                    </span>
                   </div>
 
                   <p className="muted">
-                    Diámetro: {sourceLabel(record, "diameterCm")}
+                    Altura: {sourceLabel(record, "heightCm")}
                     <br />
                     Hojas: {sourceLabel(record, "leafCount")}
+                    <br />
+                    Diámetro: {sourceLabel(record, "diameterCm")}
                   </p>
 
                   <div className="record-foot">
                     <span className="person-avatar">
-                      {record.collaborator
-                        .trim()
-                        .split(/\s+/)
-                        .map((word) => word[0] || "")
-                        .slice(0, 2)
-                        .join("")}
+                      {initials(record.collaborator)}
                     </span>
 
                     <span>{record.collaborator}</span>
@@ -254,13 +318,25 @@ export default function History({
                     <button
                       type="button"
                       className="icon-button"
-                      title="Ver registro completo"
+                      title="Ver observación completa"
                       aria-label={`Ver observación de ${record.plantId || record.zone} del ${record.date}`}
-                      onClick={() => setDetails(record)}
+                      onClick={() => setDetailsId(record.id)}
                     >
                       <ArrowUpRight size={18} />
                     </button>
                   </div>
+
+                  {onEdit && (
+                    <button
+                      type="button"
+                      className="button secondary"
+                      style={{ width: "100%", marginTop: 12 }}
+                      onClick={() => editRecord(record)}
+                    >
+                      <Pencil size={16} />
+                      Editar observación
+                    </button>
+                  )}
                 </div>
               </article>
             );
@@ -269,15 +345,19 @@ export default function History({
       ) : (
         <div className="empty-state">
           <NotebookPen size={38} />
-          <h3>No hay registros con estos filtros</h3>
-          <p>Prueba otra búsqueda o añade una observación.</p>
+
+          <h3>No hay observaciones con estos filtros</h3>
+
+          <p>
+            Prueba otra búsqueda o registra una visita a tu planta.
+          </p>
 
           <button
             type="button"
             className="button primary"
             onClick={onNew}
           >
-            Nuevo registro
+            Nueva observación
           </button>
         </div>
       )}
@@ -285,10 +365,10 @@ export default function History({
       {details && (
         <Modal
           title={`${details.plantId || "Planta sin identificar"} · ${details.zone}`}
-          onClose={() => setDetails(null)}
+          onClose={() => setDetailsId(null)}
         >
           <p className="modal-subtitle">
-            {details.date} · {details.collaborator}
+            {dateLabel(details.date)} · {details.collaborator}
           </p>
 
           {details.image && (
@@ -296,11 +376,25 @@ export default function History({
               className="detail-image"
               src={details.image}
               alt={`Fotografía del rabanito ${details.plantId || "sin identificar"}`}
+              style={{ objectFit: "contain" }}
             />
           )}
 
-          <div className="detail-tags">
-            <Badge>{details.health}</Badge>
+          <div
+            className="detail-tags"
+            style={{ flexWrap: "wrap" }}
+          >
+            <Badge
+              tone={
+                details.health === "Sano"
+                  ? "green"
+                  : details.health === "Enfermo"
+                    ? "orange"
+                    : "gray"
+              }
+            >
+              {details.health}
+            </Badge>
 
             <Badge tone="gray">
               {details.source === "demo"
@@ -317,14 +411,16 @@ export default function History({
             {[
               ["Planta", details.plantId || "Sin identificar"],
               ["Cultivo", details.crop],
-              ["Siembra", details.sowingDate || "Pendiente"],
-              ["Observación", details.date],
+              ["Lote", details.zone],
+              ["Siembra", dateLabel(details.sowingDate)],
+              ["Observación", dateLabel(details.date)],
               [
                 "Edad",
                 age(details) === null
                   ? "Sin calcular"
                   : `${age(details)} días`,
               ],
+              ["Responsable", details.collaborator],
               ["Tratamiento", details.fertilizer],
               ["Dosis", details.dose || "Pendiente"],
               [
@@ -332,15 +428,21 @@ export default function History({
                 measurement(details, "heightCm", "cm"),
               ],
               [
+                "Hojas",
+                measurement(details, "leafCount", "hojas"),
+              ],
+              [
                 "Diámetro",
                 measurement(details, "diameterCm", "cm"),
               ],
               [
-                "Hojas",
-                measurement(details, "leafCount", "hojas"),
+                "Color del bulbo",
+                details.bulbColor || "Sin registrar",
               ],
-              ["Color del bulbo", details.bulbColor || "Sin registrar"],
-              ["Color de hojas", details.leafColor || "Sin registrar"],
+              [
+                "Color de las hojas",
+                details.leafColor || "Sin registrar",
+              ],
               [
                 "Diámetro original IA",
                 details.estimatedDiameterCm == null
@@ -359,12 +461,19 @@ export default function History({
                   ? "No aplica"
                   : details.source === "demo"
                     ? `${details.confidence}% · valor simulado`
-                    : `${details.confidence}% · no calibrada`,
+                    : `${details.confidence}% · precisión no comprobada`,
               ],
             ].map(([label, content]) => (
               <div key={label}>
                 <dt>{label}</dt>
-                <dd>{content}</dd>
+                <dd
+                  style={{
+                    margin: 0,
+                    overflowWrap: "anywhere",
+                  }}
+                >
+                  {content}
+                </dd>
               </div>
             ))}
           </dl>
@@ -378,18 +487,59 @@ export default function History({
               </p>
             ))
           ) : (
-            <p className="detail-copy">Sin observaciones.</p>
+            <p className="detail-copy">
+              Sin observaciones escritas.
+            </p>
           )}
 
-          <h3>Recomendaciones y limitaciones</h3>
+          <h3>Recomendaciones del análisis</h3>
 
-          {[...details.recommendations, ...details.limitations].map(
-            (item, index) => (
+          {details.recommendations.length ? (
+            details.recommendations.map((item, index) => (
               <p className="detail-copy" key={index}>
                 {item}
               </p>
-            ),
+            ))
+          ) : (
+            <p className="detail-copy">
+              Sin recomendaciones registradas.
+            </p>
           )}
+
+          <h3>Limitaciones</h3>
+
+          {details.limitations.length ? (
+            details.limitations.map((item, index) => (
+              <p className="detail-copy" key={index}>
+                {item}
+              </p>
+            ))
+          ) : (
+            <p className="detail-copy">
+              Sin limitaciones registradas.
+            </p>
+          )}
+
+          <div className="modal-actions">
+            <button
+              type="button"
+              className="button secondary"
+              onClick={() => setDetailsId(null)}
+            >
+              Cerrar
+            </button>
+
+            {onEdit && (
+              <button
+                type="button"
+                className="button primary"
+                onClick={() => editRecord(details)}
+              >
+                <Pencil size={16} />
+                Editar observación
+              </button>
+            )}
+          </div>
         </Modal>
       )}
     </>
