@@ -14,6 +14,7 @@ import {
   ImagePlus,
   Info,
 } from "lucide-react";
+
 import type { Diagnosis } from "@/lib/types";
 import { Badge, Loading } from "./ui";
 
@@ -22,11 +23,16 @@ type AnalysisPanelProps = {
   imageName: string;
   diagnosis: Diagnosis | null;
   source: string;
+  requiresToken?: boolean;
   busy: boolean;
   mode: "demo" | "real";
   setMode: (value: "demo" | "real") => void;
   onFile: (file: File) => void;
-  onAnalyze: (crop: string, scale: string) => void;
+  onAnalyze: (
+    crop: string,
+    scale: string,
+    accessToken?: string,
+  ) => void;
   onDemo: () => void;
   onReport: () => void;
 };
@@ -38,6 +44,7 @@ export default function AnalysisPanel({
   imageName,
   diagnosis,
   source,
+  requiresToken = false,
   busy,
   mode,
   setMode,
@@ -49,6 +56,7 @@ export default function AnalysisPanel({
   const input = useRef<HTMLInputElement>(null);
   const [drag, setDrag] = useState(false);
   const [scale, setScale] = useState("");
+  const [accessToken, setAccessToken] = useState("");
 
   return (
     <div className="analysis-grid">
@@ -63,16 +71,16 @@ export default function AnalysisPanel({
 
         <div
           className={`image-stage ${drag ? "dragging" : ""}`}
-          onDragOver={(e) => {
-            e.preventDefault();
+          onDragOver={(event) => {
+            event.preventDefault();
             if (!busy) setDrag(true);
           }}
           onDragLeave={() => setDrag(false)}
-          onDrop={(e) => {
-            e.preventDefault();
+          onDrop={(event) => {
+            event.preventDefault();
             setDrag(false);
 
-            const file = e.dataTransfer.files[0];
+            const file = event.dataTransfer.files[0];
             if (!busy && file) onFile(file);
           }}
         >
@@ -135,10 +143,12 @@ export default function AnalysisPanel({
           className="sr-only"
           disabled={busy}
           aria-label="Cargar imagen de rabanito"
-          onChange={(e) => {
-            const file = e.target.files?.[0];
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+
             if (!busy && file) onFile(file);
-            e.target.value = "";
+
+            event.target.value = "";
           }}
         />
 
@@ -174,8 +184,8 @@ export default function AnalysisPanel({
             <select
               value={mode}
               disabled={busy}
-              onChange={(e) =>
-                setMode(e.target.value as "demo" | "real")
+              onChange={(event) =>
+                setMode(event.target.value as "demo" | "real")
               }
             >
               <option value="demo">Demostración</option>
@@ -190,9 +200,25 @@ export default function AnalysisPanel({
             <input
               value={scale}
               disabled={busy}
-              onChange={(e) => setScale(e.target.value)}
+              onChange={(event) => setScale(event.target.value)}
               maxLength={250}
               placeholder="Ej. regla de 10 cm junto al bulbo"
+            />
+          </label>
+        )}
+
+        {mode === "real" && requiresToken && (
+          <label className="scale-input">
+            Código de acceso al análisis
+            <input
+              type="password"
+              autoComplete="off"
+              value={accessToken}
+              disabled={busy}
+              onChange={(event) =>
+                setAccessToken(event.target.value)
+              }
+              placeholder="Código configurado por el responsable del sitio"
             />
           </label>
         )}
@@ -202,7 +228,7 @@ export default function AnalysisPanel({
             <Info size={14} />
             {mode === "demo"
               ? "La demostración utiliza datos simulados."
-              : "La foto se analizará en el servidor con Gemini."}
+              : "La foto se analizará con el motor configurado en el servidor."}
           </span>
 
           <button
@@ -210,10 +236,13 @@ export default function AnalysisPanel({
             className="button primary"
             disabled={busy || !image}
             onClick={() =>
-              mode === "demo" ? onDemo() : onAnalyze(CROP, scale)
+              mode === "demo"
+                ? onDemo()
+                : onAnalyze(CROP, scale, accessToken)
             }
           >
-            {busy ? <Loading /> : <Sparkles size={17} />}{" "}
+            {busy ? <Loading /> : <Sparkles size={17} />}
+            {" "}
             {busy
               ? "Analizando…"
               : mode === "demo"
@@ -250,8 +279,13 @@ export default function AnalysisPanel({
                       ? "Requiere revisión"
                       : "Sin determinar"}
                 </h3>
+
                 <Badge
-                  tone={diagnosis.health === "Sano" ? "green" : "orange"}
+                  tone={
+                    diagnosis.health === "Sano"
+                      ? "green"
+                      : "orange"
+                  }
                 >
                   {source === "demo"
                     ? "Resultado de ejemplo"
@@ -276,9 +310,15 @@ export default function AnalysisPanel({
                   <small>%</small>
                 </strong>
               </div>
+
               <div className="meter">
-                <i style={{ width: `${diagnosis.confidence}%` }} />
+                <i
+                  style={{
+                    width: `${diagnosis.confidence}%`,
+                  }}
+                />
               </div>
+
               <small>
                 {source === "demo"
                   ? "Valor simulado"
@@ -304,14 +344,14 @@ export default function AnalysisPanel({
                     ? "Sin escala"
                     : `${diagnosis.diameterCm} cm`,
                 ],
-              ].map(([Icon, label, value]) => {
+              ].map(([Icon, label, measure]) => {
                 const MetricIcon = Icon as typeof Leaf;
 
                 return (
                   <div key={String(label)}>
                     <MetricIcon size={17} />
                     <span>{String(label)}</span>
-                    <strong>{String(value)}</strong>
+                    <strong>{String(measure)}</strong>
                   </div>
                 );
               })}
@@ -319,16 +359,22 @@ export default function AnalysisPanel({
 
             <div className="observations">
               <h3>Observaciones técnicas</h3>
+
               {diagnosis.observations.map((observation, index) => (
                 <p key={index}>
-                  <span>{String(index + 1).padStart(2, "0")}</span>
+                  <span>
+                    {String(index + 1).padStart(2, "0")}
+                  </span>
                   {observation}
                 </p>
               ))}
             </div>
 
             <details className="limitations">
-              <summary>Recomendaciones y límites del análisis</summary>
+              <summary>
+                Recomendaciones y límites del análisis
+              </summary>
+
               {[
                 ...diagnosis.recommendations,
                 ...diagnosis.limitations,
@@ -343,14 +389,17 @@ export default function AnalysisPanel({
               disabled={busy}
               onClick={onReport}
             >
-              Usar diagnóstico en un reporte <ArrowUpRight size={18} />
+              Usar diagnóstico en un reporte
+              <ArrowUpRight size={18} />
             </button>
           </>
         ) : (
           <div className="no-diagnosis">
             <ScanLine size={42} />
             <h3>
-              {busy ? "Observando tu cultivo…" : "Todo listo para analizar"}
+              {busy
+                ? "Observando tu cultivo…"
+                : "Todo listo para analizar"}
             </h3>
             <p>
               {busy
