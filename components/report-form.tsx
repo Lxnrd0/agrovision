@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import type { FormEvent } from "react";
+import { useMemo, useState } from "react";
+import type { CSSProperties, FormEvent } from "react";
 import type {
   Diagnosis,
   FieldRecord,
@@ -20,6 +20,28 @@ type ReportFormProps = {
   onClose: () => void;
   onSave: (record: FieldRecord) => Promise<void>;
   notify: (message: string, error?: boolean) => void;
+};
+
+const sectionStyle: CSSProperties = {
+  minWidth: 0,
+  margin: "0 0 20px",
+  padding: "16px",
+  border: "1px solid var(--border)",
+  borderRadius: "10px",
+};
+
+const legendStyle: CSSProperties = {
+  padding: "0 8px",
+  color: "var(--text)",
+  fontSize: "15px",
+  fontWeight: 600,
+};
+
+const noteStyle: CSSProperties = {
+  margin: "0 0 14px",
+  color: "var(--muted)",
+  fontSize: "13px",
+  lineHeight: 1.6,
 };
 
 function localDate() {
@@ -41,27 +63,73 @@ export default function ReportForm({
   onSave,
   notify,
 }: ReportFormProps) {
+  const [today] = useState(localDate);
   const [photo, setPhoto] = useState(image);
   const [saving, setSaving] = useState(false);
   const [loadingPhoto, setLoadingPhoto] = useState(false);
-  const [today] = useState(localDate);
+
+  const [selectedId, setSelectedId] = useState("");
+  const [plantId, setPlantId] = useState("");
+  const [sowingDate, setSowingDate] = useState("");
+  const [zone, setZone] = useState("");
+  const [fertilizer, setFertilizer] = useState("");
+  const [doseAmount, setDoseAmount] = useState("");
+  const [doseUnit, setDoseUnit] = useState("g/planta");
+  const [doseFrequency, setDoseFrequency] = useState("");
+  const [observationDate, setObservationDate] = useState(today);
 
   const busy = saving || loadingPhoto;
+  const isExisting = selectedId !== "";
 
-  const plants = [
-    ...new Map(
-      [...records]
-        .sort((a, b) => a.date.localeCompare(b.date))
-        .filter(
-          (record) =>
-            record.source !== "demo" &&
-            record.plantId &&
-            record.sowingDate &&
-            record.dose,
-        )
-        .map((record) => [plantKey(record), record]),
-    ).values(),
-  ];
+  const plants = useMemo(() => {
+    const latest = new Map<string, FieldRecord>();
+
+    const sorted = [...records].sort(
+      (a, b) =>
+        a.date.localeCompare(b.date) ||
+        a.createdAt.localeCompare(b.createdAt),
+    );
+
+    for (const record of sorted) {
+      if (
+        record.source !== "demo" &&
+        record.plantId?.trim() &&
+        record.sowingDate &&
+        record.dose?.trim()
+      ) {
+        latest.set(plantKey(record), record);
+      }
+    }
+
+    return [...latest.values()].sort((a, b) =>
+      (a.plantId ?? "").localeCompare(
+        b.plantId ?? "",
+        "es",
+        { numeric: true },
+      ),
+    );
+  }, [records]);
+
+  const selectedPlant = plants.find(
+    (record) => record.id === selectedId,
+  );
+
+  const isControl = fertilizer === "Sin fertilizante";
+
+  function selectPlant(id: string) {
+    setSelectedId(id);
+
+    const plant = plants.find((record) => record.id === id);
+
+    setPlantId(plant?.plantId ?? "");
+    setSowingDate(plant?.sowingDate ?? "");
+    setZone(plant?.zone ?? "");
+    setFertilizer(plant?.fertilizer ?? "");
+
+    setDoseAmount("");
+    setDoseUnit("g/planta");
+    setDoseFrequency("");
+  }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -83,61 +151,105 @@ export default function ReportForm({
     const manualLeaves = number("leafCount");
     const manualHeight = number("heightCm");
 
-    const estimate =
-      photo === image ? diagnosis : null;
+    const estimate = photo === image ? diagnosis : null;
 
     setSaving(true);
 
     try {
+      if (isExisting && !selectedPlant) {
+        throw new Error(
+          "Selecciona nuevamente la planta que deseas observar.",
+        );
+      }
+
+      if (
+        !plantId.trim() ||
+        !sowingDate ||
+        !zone.trim() ||
+        !fertilizer.trim()
+      ) {
+        throw new Error(
+          "Completa el identificador, la siembra, el lote y el tratamiento.",
+        );
+      }
+
+      if (
+        observationDate > today ||
+        sowingDate > today ||
+        observationDate < sowingDate
+      ) {
+        throw new Error(
+          "La observación debe estar entre la fecha de siembra y hoy.",
+        );
+      }
+
+      if (!text("collaborator")) {
+        throw new Error("Escribe el nombre del responsable.");
+      }
+
+      let dose: string;
+
+      if (selectedPlant) {
+        // Conserva exactamente la dosis de los registros anteriores.
+        dose = selectedPlant.dose ?? "";
+      } else if (isControl) {
+        dose = "0 g/planta; sin aplicación";
+      } else {
+        const amount = Number(doseAmount);
+
+        if (
+          doseAmount.trim() === "" ||
+          !Number.isFinite(amount) ||
+          amount <= 0
+        ) {
+          throw new Error(
+            "La cantidad de abono debe ser mayor que cero. Para el control, elige Sin fertilizante.",
+          );
+        }
+
+        if (!doseUnit || !doseFrequency) {
+          throw new Error(
+            "Selecciona la unidad y la frecuencia de aplicación.",
+          );
+        }
+
+        dose = `${amount} ${doseUnit}; ${doseFrequency}`;
+      }
+
       const record: FieldRecord = {
         id: crypto.randomUUID(),
         createdAt: new Date().toISOString(),
 
-        plantId: text("plantId"),
-        sowingDate: text("sowingDate"),
-        dose: text("dose"),
+        plantId: plantId.trim(),
+        sowingDate,
+        zone: zone.trim(),
+        fertilizer: fertilizer.trim(),
+        dose,
 
         collaborator: text("collaborator"),
-        date: text("date"),
-        zone: text("zone"),
-        fertilizer: text("fertilizer"),
+        date: observationDate,
         crop: "Rabanito",
 
-        bulbColor: text("bulbColor"),
-        leafColor: text("leafColor"),
+        bulbColor: text("bulbColor") || "No observado",
+        leafColor: text("leafColor") || "No observado",
 
+        // Solo las mediciones ingresadas en campo van aquí.
         heightCm: manualHeight,
-
-        diameterCm:
-          manualDiameter ?? estimate?.diameterCm ?? null,
-
-        leafCount:
-          manualLeaves ?? estimate?.leafCount ?? null,
+        diameterCm: manualDiameter,
+        leafCount: manualLeaves,
 
         measurementSources: {
-          diameterCm:
-            manualDiameter !== null
-              ? "manual"
-              : estimate?.diameterCm != null
-                ? "ia"
-                : "unknown",
-
-          leafCount:
-            manualLeaves !== null
-              ? "manual"
-              : estimate?.leafCount != null
-                ? "ia"
-                : "unknown",
-
           heightCm:
-            manualHeight !== null ? "manual" : "unknown",
+            manualHeight === null ? "unknown" : "manual",
+          diameterCm:
+            manualDiameter === null ? "unknown" : "manual",
+          leafCount:
+            manualLeaves === null ? "unknown" : "manual",
         },
 
-        estimatedDiameterCm:
-          estimate?.diameterCm ?? null,
-
-        estimatedLeafCount:
-          estimate?.leafCount ?? null,
+        // Las estimaciones se conservan por separado.
+        estimatedDiameterCm: estimate?.diameterCm ?? null,
+        estimatedLeafCount: estimate?.leafCount ?? null,
 
         health: text("health") as PlantHealth,
         confidence: estimate?.confidence ?? 0,
@@ -150,11 +262,17 @@ export default function ReportForm({
         recommendations: estimate?.recommendations ?? [],
 
         limitations: estimate?.limitations ?? [
-          "Registro manual de campo, sin análisis por IA.",
+          "Observación de campo sin análisis por IA.",
         ],
 
         image: photo,
-        source,
+
+        source:
+          source === "demo"
+            ? "demo"
+            : estimate
+              ? source
+              : "manual",
       };
 
       validateRecord(record, records);
@@ -174,324 +292,491 @@ export default function ReportForm({
 
   return (
     <Modal
-      title={
-        diagnosis
-          ? "Registrar observación analizada"
-          : "Nuevo registro de rabanito"
-      }
+      title="Registrar observación de rabanito"
       wide
       onClose={() => {
         if (!busy) onClose();
       }}
     >
-      <form onSubmit={submit}>
-        <p className="modal-subtitle">
-          Sigue la misma planta usando su etiqueta, lote
-          y fecha de siembra.
-          {source === "demo" &&
-            " Este registro es un ejemplo y no entrará en la comparación real."}
+      <form className="tracking-form" onSubmit={submit}>
+        <p style={noteStyle}>
+          Selecciona una planta o registra una nueva.
+          Después añade lo que observaste y mediste hoy.
         </p>
 
-        <div className="form-grid">
-          <label className="span-2">
-            Continuar una planta registrada
-            <select
-              defaultValue=""
-              disabled={busy}
-              onChange={(event) => {
-                const record = records.find(
-                  (item) => item.id === event.target.value,
-                );
+        {source === "demo" && (
+          <p style={noteStyle} role="note">
+            Este es un ejemplo y no participará en las
+            comparaciones de plantas reales.
+          </p>
+        )}
 
-                const form = event.currentTarget.form;
+        <fieldset style={sectionStyle} disabled={busy}>
+          <legend style={legendStyle}>
+            1. Identificación de la planta
+          </legend>
 
-                if (!record || !form) return;
+          <div className="form-grid">
+            <label className="span-2">
+              ¿Qué planta vas a observar?
+              <select
+                value={selectedId}
+                onChange={(event) =>
+                  selectPlant(event.target.value)
+                }
+              >
+                <option value="">Registrar una planta nueva</option>
 
-                const names = [
-                  "plantId",
-                  "sowingDate",
-                  "zone",
-                  "fertilizer",
-                  "dose",
-                ] as const;
+                {plants.map((plant) => (
+                  <option key={plant.id} value={plant.id}>
+                    {plant.plantId} · {plant.zone} ·{" "}
+                    {plant.fertilizer} · Siembra {plant.sowingDate}
+                  </option>
+                ))}
+              </select>
+            </label>
 
-                for (const name of names) {
-                  const input = form.elements.namedItem(
-                    name,
-                  ) as HTMLInputElement | null;
+            <label>
+              Identificador de planta *
+              <input
+                name="plantId"
+                required
+                maxLength={80}
+                value={plantId}
+                readOnly={isExisting}
+                onChange={(event) =>
+                  setPlantId(event.target.value)
+                }
+                placeholder="Ej. R-001"
+              />
+              <small>
+                Usa el código de la etiqueta de esta planta.
+              </small>
+            </label>
 
-                  if (input) {
-                    input.value = record[name] || "";
-                  }
+            <label>
+              Fecha de siembra *
+              <input
+                name="sowingDate"
+                type="date"
+                required
+                max={today}
+                value={sowingDate}
+                readOnly={isExisting}
+                onChange={(event) =>
+                  setSowingDate(event.target.value)
+                }
+              />
+            </label>
+
+            <label className="span-2">
+              Lote o zona *
+              <input
+                name="zone"
+                required
+                maxLength={80}
+                value={zone}
+                readOnly={isExisting}
+                onChange={(event) => setZone(event.target.value)}
+                placeholder="Ej. Lote A"
+              />
+            </label>
+          </div>
+        </fieldset>
+
+        <fieldset style={sectionStyle} disabled={busy}>
+          <legend style={legendStyle}>
+            2. Tratamiento de la planta
+          </legend>
+
+          <p style={noteStyle}>
+            {isExisting
+              ? "Se conserva el tratamiento registrado para esta planta."
+              : "Registra el tratamiento asignado en tu experimento."}
+          </p>
+
+          <div className="form-grid">
+            <label className="span-2">
+              Tratamiento o abono *
+              <input
+                name="fertilizer"
+                required
+                maxLength={100}
+                value={fertilizer}
+                readOnly={isExisting}
+                list="tracking-fertilizers"
+                onChange={(event) =>
+                  setFertilizer(event.target.value)
+                }
+                placeholder="Selecciona o escribe el abono"
+              />
+
+              <datalist id="tracking-fertilizers">
+                <option value="Humus de lombriz" />
+                <option value="Compost orgánico" />
+                <option value="NPK 20-20-20" />
+                <option value="Sin fertilizante" />
+              </datalist>
+            </label>
+
+            {!isExisting && (
+              <button
+                type="button"
+                className="button secondary span-2"
+                onClick={() => {
+                  setFertilizer("Sin fertilizante");
+                  setDoseAmount("");
+                  setDoseFrequency("");
+                }}
+              >
+                Usar control sin fertilizante
+              </button>
+            )}
+
+            {isExisting ? (
+              <label className="span-2">
+                Dosis registrada
+                <input
+                  value={selectedPlant?.dose ?? ""}
+                  readOnly
+                />
+              </label>
+            ) : isControl ? (
+              <p className="span-2" style={noteStyle}>
+                Control: 0 g/planta, sin aplicación de abono.
+              </p>
+            ) : (
+              <>
+                <label>
+                  Cantidad por aplicación *
+                  <input
+                    name="doseAmount"
+                    type="number"
+                    required
+                    min="0.000001"
+                    step="any"
+                    value={doseAmount}
+                    onChange={(event) =>
+                      setDoseAmount(event.target.value)
+                    }
+                    placeholder="Ej. 10"
+                  />
+                </label>
+
+                <label>
+                  Unidad y base de la dosis *
+                  <select
+                    name="doseUnit"
+                    required
+                    value={doseUnit}
+                    onChange={(event) =>
+                      setDoseUnit(event.target.value)
+                    }
+                  >
+                    <option value="g/planta">g por planta</option>
+                    <option value="g/maceta">g por maceta</option>
+                    <option value="mL/planta">mL por planta</option>
+                    <option value="mL/maceta">mL por maceta</option>
+                    <option value="g/L de agua">
+                      g por litro de agua
+                    </option>
+                    <option value="mL/L de agua">
+                      mL por litro de agua
+                    </option>
+                  </select>
+                </label>
+
+                <label className="span-2">
+                  Frecuencia programada *
+                  <select
+                    name="doseFrequency"
+                    required
+                    value={doseFrequency}
+                    onChange={(event) =>
+                      setDoseFrequency(event.target.value)
+                    }
+                  >
+                    <option value="">Seleccionar frecuencia</option>
+                    <option value="una sola aplicación">
+                      Una sola aplicación
+                    </option>
+                    <option value="cada día">Cada día</option>
+                    <option value="cada 3 días">Cada 3 días</option>
+                    <option value="cada 7 días">Cada 7 días</option>
+                    <option value="cada 14 días">Cada 14 días</option>
+                  </select>
+                </label>
+              </>
+            )}
+          </div>
+
+          <p style={{ ...noteStyle, margin: "14px 0 0" }}>
+            La dosis describe el tratamiento. Registrar una
+            observación no significa que aplicaste abono ese día.
+            Anota las aplicaciones efectivas en las observaciones.
+          </p>
+        </fieldset>
+
+        <fieldset style={sectionStyle} disabled={busy}>
+          <legend style={legendStyle}>
+            3. Observación y medidas de campo
+          </legend>
+
+          <div className="form-grid">
+            <label>
+              Fecha de observación *
+              <input
+                name="date"
+                type="date"
+                required
+                min={sowingDate || undefined}
+                max={today}
+                value={observationDate}
+                onChange={(event) =>
+                  setObservationDate(event.target.value)
+                }
+              />
+            </label>
+
+            <label>
+              Responsable *
+              <input
+                name="collaborator"
+                required
+                maxLength={80}
+                placeholder="Nombre y apellido"
+              />
+            </label>
+
+            <label>
+              Altura medida (cm)
+              <input
+                name="heightCm"
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="Ej. 8.5"
+              />
+              <small>
+                Mide desde el suelo hasta el punto más alto,
+                usando el mismo criterio en cada visita.
+              </small>
+            </label>
+
+            <label>
+              Número de hojas
+              <input
+                name="leafCount"
+                type="number"
+                min="0"
+                step="1"
+                placeholder="Ej. 5"
+              />
+              <small>
+                Cuenta con el mismo criterio en cada visita.
+                Vacío significa que no las contaste.
+              </small>
+            </label>
+
+            <label className="span-2">
+              Diámetro medido del bulbo (cm)
+              <input
+                name="diameterCm"
+                type="number"
+                min="0.01"
+                step="0.01"
+                placeholder="Opcional · Ej. 2.4"
+              />
+              <small>
+                Regístralo si puedes medirlo directamente.
+                Si el bulbo está enterrado o no es accesible,
+                deja este campo vacío.
+              </small>
+            </label>
+          </div>
+
+          <p style={{ ...noteStyle, margin: "14px 0 0" }}>
+            Deja vacía cualquier medida que no tomaste.
+            No escribas cero para representar un dato faltante.
+          </p>
+        </fieldset>
+
+        <fieldset style={sectionStyle} disabled={busy}>
+          <legend style={legendStyle}>
+            4. Estado, síntomas y fotografía
+          </legend>
+
+          <div className="form-grid">
+            <label className="span-2">
+              Estado observado
+              <select name="health" defaultValue="Indeterminado">
+                <option value="Indeterminado">
+                  Indeterminado / no evaluado
+                </option>
+                <option value="Sano">Sano</option>
+                <option value="Enfermo">Enfermo</option>
+              </select>
+              <small>
+                Describe los síntomas visibles abajo para
+                respaldar tu evaluación.
+              </small>
+            </label>
+
+            <label>
+              Color de las hojas
+              <input
+                name="leafColor"
+                maxLength={100}
+                placeholder="Ej. Verde, amarillento"
+              />
+            </label>
+
+            <label>
+              Color del bulbo
+              <input
+                name="bulbColor"
+                maxLength={100}
+                placeholder="Vacío si no es visible"
+              />
+            </label>
+
+            <label className="span-2">
+              Síntomas y observaciones
+              <textarea
+                name="observations"
+                maxLength={5000}
+                rows={4}
+                placeholder="Ej. Sin síntomas visibles. Se regó hoy. Se observan dos hojas nuevas."
+              />
+            </label>
+          </div>
+
+          <label className="attachment">
+            <Upload size={19} />
+
+            <span>
+              {loadingPhoto
+                ? "Cargando fotografía…"
+                : diagnosis
+                  ? "Fotografía utilizada en el análisis"
+                  : photo
+                    ? "Fotografía adjunta · Cambiar"
+                    : "Adjuntar fotografía (opcional)"}
+            </span>
+
+            <input
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              disabled={busy || !!diagnosis}
+              onChange={async (event) => {
+                const input = event.currentTarget;
+                const file = input.files?.[0];
+
+                input.value = "";
+
+                if (!file || busy) return;
+
+                setLoadingPhoto(true);
+
+                try {
+                  setPhoto(await readImage(file));
+                } catch (error) {
+                  notify(
+                    error instanceof Error
+                      ? error.message
+                      : "No se pudo cargar la fotografía.",
+                    true,
+                  );
+                } finally {
+                  setLoadingPhoto(false);
                 }
               }}
+            />
+          </label>
+
+          {photo && (
+            <img
+              className="form-photo"
+              src={photo}
+              alt="Fotografía de la planta observada"
+              style={{
+                display: "block",
+                width: "100%",
+                height: "220px",
+                objectFit: "contain",
+                margin: "12px 0",
+                background: "var(--input)",
+                border: "1px solid var(--border)",
+                borderRadius: "8px",
+              }}
+            />
+          )}
+
+          {photo && !diagnosis && (
+            <button
+              type="button"
+              className="button secondary"
+              disabled={busy}
+              onClick={() => setPhoto("")}
             >
-              <option value="">
-                Nueva planta / elegir una existente
-              </option>
+              Quitar fotografía
+            </button>
+          )}
 
-              {plants.map((record) => (
-                <option key={record.id} value={record.id}>
-                  {record.plantId} · {record.zone} · Siembra{" "}
-                  {record.sowingDate}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label>
-            Identificador de planta
-            <input
-              name="plantId"
-              required
-              disabled={busy}
-              maxLength={80}
-              placeholder="Ej. R-001"
-            />
-          </label>
-
-          <label>
-            Fecha de siembra
-            <input
-              name="sowingDate"
-              type="date"
-              required
-              disabled={busy}
-              max={today}
-            />
-          </label>
-
-          <label>
-            Fecha de observación
-            <input
-              name="date"
-              type="date"
-              required
-              disabled={busy}
-              defaultValue={today}
-              max={today}
-            />
-          </label>
-
-          <label>
-            Colaborador
-            <input
-              name="collaborator"
-              required
-              disabled={busy}
-              maxLength={80}
-              placeholder="Nombre y apellido"
-            />
-          </label>
-
-          <label>
-            Lote o zona
-            <input
-              name="zone"
-              required
-              disabled={busy}
-              maxLength={80}
-              placeholder="Ej. Lote A"
-            />
-          </label>
-
-          <label>
-            Tratamiento o abono
-            <input
-              name="fertilizer"
-              required
-              disabled={busy}
-              maxLength={100}
-              placeholder="Ej. Humus de lombriz"
-              list="fertilizers"
-            />
-            <datalist id="fertilizers">
-              <option value="Humus de lombriz" />
-              <option value="Compost orgánico" />
-              <option value="NPK 20-20-20" />
-              <option value="Sin fertilizante" />
-            </datalist>
-          </label>
-
-          <label className="span-2">
-            Dosis, unidad y frecuencia
-            <input
-              name="dose"
-              required
-              disabled={busy}
-              maxLength={100}
-              placeholder="Ej. 10 g/planta por aplicación; sin abono: 0 g/planta"
-            />
-          </label>
-
-          <label>
-            Cultivo
-            <input value="Rabanito" readOnly />
-          </label>
-
-          <label>
-            Estado observado
-            <select
-              name="health"
-              disabled={busy}
-              defaultValue={
-                diagnosis?.health ?? "Indeterminado"
-              }
-            >
-              <option value="Sano">Sano</option>
-              <option value="Enfermo">Enfermo</option>
-              <option value="Indeterminado">
-                Indeterminado
-              </option>
-            </select>
-          </label>
-
-          <label>
-            Altura manual (cm)
-            <input
-              name="heightCm"
-              type="number"
-              min="0"
-              max="1000"
-              step="0.01"
-              disabled={busy}
-              placeholder="Del suelo al punto más alto"
-            />
-          </label>
-
-          <label>
-            Hojas contadas manualmente
-            <input
-              name="leafCount"
-              type="number"
-              min="0"
-              max="10000"
-              step="1"
-              disabled={busy}
-              placeholder="Vacío si no las contaste"
-            />
-          </label>
-
-          <label>
-            Diámetro manual del bulbo (cm)
-            <input
-              name="diameterCm"
-              type="number"
-              min="0.01"
-              max="1000"
-              step="0.01"
-              disabled={busy}
-              placeholder="Medido con regla o calibre"
-            />
-          </label>
-
-          <label>
-            Color del bulbo
-            <input
-              name="bulbColor"
-              disabled={busy}
-              maxLength={100}
-              defaultValue={diagnosis?.bulbColor ?? ""}
-              placeholder="No visible, si corresponde"
-            />
-          </label>
-
-          <label>
-            Color de las hojas
-            <input
-              name="leafColor"
-              disabled={busy}
-              maxLength={100}
-              defaultValue={diagnosis?.leafColor ?? ""}
-            />
-          </label>
-
-          <p className="span-2">
-            Introduce solo medidas verificadas en campo.
-            Si no puedes medir el bulbo, deja el diámetro
-            vacío. Mantén el mismo tratamiento y dosis
-            durante el seguimiento de esta planta.
+          <p style={{ ...noteStyle, margin: "14px 0 0" }}>
+            Procura fotografiar la misma planta desde una
+            posición semejante en cada visita.
           </p>
 
           {diagnosis && (
-            <p className="span-2">
-              Estimación de la foto: diámetro{" "}
-              {diagnosis.diameterCm == null
-                ? "sin estimar"
-                : `${diagnosis.diameterCm} cm`}
-              ; hojas {diagnosis.leafCount ?? "sin estimar"}.
-              Si dejas una medida manual vacía, su estimación
-              se guardará con origen IA. La confianza del
-              modelo no comprueba su precisión.
-            </p>
+            <details style={{ marginTop: "16px" }}>
+              <summary
+                style={{
+                  cursor: "pointer",
+                  color: "var(--green-text)",
+                }}
+              >
+                Consultar análisis de la fotografía
+              </summary>
+
+              <div style={{ marginTop: "12px" }}>
+                <p style={noteStyle}>
+                  Diámetro estimado:{" "}
+                  {diagnosis.diameterCm == null
+                    ? "Sin estimar"
+                    : `${diagnosis.diameterCm} cm`}
+                  . Hojas estimadas:{" "}
+                  {diagnosis.leafCount ?? "Sin estimar"}.
+                </p>
+
+                <p style={noteStyle}>
+                  Estado sugerido por el modelo: {diagnosis.health}.
+                  Confirma tu propia observación en el formulario.
+                </p>
+
+                {diagnosis.observations.length > 0 && (
+                  <ul
+                    style={{
+                      color: "var(--muted)",
+                      paddingLeft: "20px",
+                      fontSize: "13px",
+                    }}
+                  >
+                    {diagnosis.observations.map((observation, i) => (
+                      <li key={i}>{observation}</li>
+                    ))}
+                  </ul>
+                )}
+
+                <p style={noteStyle}>
+                  Las estimaciones se guardan por separado.
+                  No completan las mediciones manuales.
+                  La confianza del modelo no demuestra su precisión.
+                </p>
+              </div>
+            </details>
           )}
-
-          <label className="span-2">
-            Síntomas y observaciones
-            <textarea
-              name="observations"
-              required
-              disabled={busy}
-              maxLength={5000}
-              rows={3}
-              defaultValue={
-                diagnosis?.observations.join("\n") ?? ""
-              }
-              placeholder="Describe hojas, lesiones, desarrollo, riego o cambios visibles."
-            />
-          </label>
-        </div>
-
-        <label className="attachment">
-          <Upload size={19} />
-
-          <span>
-            {loadingPhoto
-              ? "Cargando fotografía…"
-              : diagnosis
-                ? "Fotografía analizada. Para cambiarla, vuelve al análisis."
-                : photo
-                  ? "Fotografía adjunta · Cambiar"
-                  : "Adjuntar fotografía (opcional)"}
-          </span>
-
-          <input
-            type="file"
-            accept="image/png,image/jpeg,image/webp"
-            disabled={busy || !!diagnosis}
-            onChange={async (event) => {
-              const input = event.currentTarget;
-              const file = input.files?.[0];
-
-              input.value = "";
-
-              if (!file || busy) return;
-
-              setLoadingPhoto(true);
-
-              try {
-                setPhoto(await readImage(file));
-              } catch (error) {
-                notify(
-                  error instanceof Error
-                    ? error.message
-                    : "No se pudo cargar la fotografía.",
-                  true,
-                );
-              } finally {
-                setLoadingPhoto(false);
-              }
-            }}
-          />
-        </label>
-
-        {photo && (
-          <img
-            className="form-photo"
-            src={photo}
-            alt="Rabanito observado"
-          />
-        )}
+        </fieldset>
 
         <div className="modal-actions">
           <button
@@ -514,7 +799,7 @@ export default function ReportForm({
               ? "Guardando…"
               : loadingPhoto
                 ? "Cargando fotografía…"
-                : "Guardar registro"}
+                : "Guardar observación"}
           </button>
         </div>
       </form>
