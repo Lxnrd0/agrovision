@@ -18,8 +18,11 @@ export type MeasurementSource = "manual" | "ia" | "unknown";
 export type FieldRecord = Diagnosis & {
   id: string;
 
-  // Identificación y seguimiento de la planta.
-  // Son opcionales para conservar los registros antiguos.
+  // Observaciones originales del análisis de IA.
+  aiObservations?: string[];
+
+  // Datos de seguimiento de la planta.
+  // Opcionales para conservar registros antiguos.
   plantId?: string;
   sowingDate?: string;
   dose?: string;
@@ -33,8 +36,7 @@ export type FieldRecord = Diagnosis & {
     >
   >;
 
-  // Estimaciones originales para contrastarlas
-  // con las mediciones manuales.
+  // Estimaciones originales de IA.
   estimatedDiameterCm?: number | null;
   estimatedLeafCount?: number | null;
 
