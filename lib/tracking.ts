@@ -127,7 +127,7 @@ export function validateRecord(
 
   if (peers.some((previous) => previous.date === record.date)) {
     throw new Error(
-      "Esta planta ya tiene una observación en esa fecha.",
+      "Esta planta ya tiene una observación en esa fecha. Corrígela desde Bitácora → Editar observación; registra otra visita usando su fecha real.",
     );
   }
 
