@@ -1,8 +1,789 @@
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* Registro y edición de observaciones */
+/* 1. COLORES GENERALES */
+
+:root {
+  color-scheme: light;
+  --bg: #f5f8f4;
+  --surface: #ffffff;
+  --text: #182c24;
+  --dim: #66786c;
+  --border: #dce8de;
+  --input: #f1f6f1;
+  --green: #21784e;
+  --accent: #daf3df;
+  --shadow: 0 12px 32px #1e4a2b0c;
+}
+
+/* 2. ESTILOS GENERALES */
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: Inter, ui-sans-serif, system-ui,
+    -apple-system, BlinkMacSystemFont,
+    "Segoe UI", sans-serif;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+a {
+  color: inherit;
+}
+
+h1, h2, h3, p {
+  margin-top: 0;
+}
+
+h1 {
+  font-size: clamp(26px, 3vw, 38px);
+  letter-spacing: -0.045em;
+  line-height: 1.18;
+}
+
+h2 {
+  font-size: 21px;
+  letter-spacing: -0.025em;
+}
+
+h3 {
+  font-size: 16px;
+}
+
+img {
+  max-width: 100%;
+}
+
+svg {
+  flex-shrink: 0;
+}
+
+/* 3. ESTRUCTURA PRINCIPAL */
+
+.app-shell {
+  display: flex;
+  min-height: 100vh;
+}
+
+.main-shell {
+  flex: 1;
+  min-width: 0;
+}
+
+.main-shell > main {
+  padding: 30px clamp(18px, 3vw, 48px) 55px;
+  max-width: 1550px;
+  margin: auto;
+}
+
+/* 4. MENU LATERAL */
+
+.sidebar {
+  background: #103b2a;
+  color: #eef9ef;
+  width: 255px;
+  flex: 0 0 255px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  padding: 25px 17px;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow: auto;
+  z-index: 30;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+}
+
+.brand-mark,
+.workspace-icon,
+.local-icon {
+  display: grid;
+  place-items: center;
+  background: #ffffff20;
+  color: #b7f3b7;
+  border-radius: 12px;
+  width: 42px;
+  height: 42px;
+}
+
+.workspace-chip,
+.local-card,
+.sidebar-footer {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  background: #ffffff10;
+  border: 1px solid #ffffff13;
+  border-radius: 13px;
+  padding: 11px;
+}
+
+.workspace-chip {
+  font-size: 12px;
+}
+
+.sidebar nav {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.nav-label {
+  color: #a4c1ac;
+  letter-spacing: 0.12em;
+  font-size: 10px;
+  font-weight: 700;
+  margin: 4px 10px;
+}
+
+.sidebar nav button,
+.sidebar-link {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  background: transparent;
+  color: #d6e8da;
+  border: 0;
+  padding: 12px;
+  border-radius: 10px;
+  text-align: left;
+}
+
+.sidebar nav button:hover,
+.sidebar nav button.active,
+.sidebar-link:hover {
+  background: #ffffff1b;
+  color: white;
+}
+
+.nav-count {
+  margin-left: auto;
+}
+
+.nav-active-dot,
+.status-dot {
+  height: 7px;
+  width: 7px;
+  border-radius: 50%;
+  background: #60d591;
+  display: inline-block;
+}
+
+.sidebar-bottom {
+  margin-top: auto;
+  display: grid;
+  gap: 14px;
+}
+
+.sidebar-footer {
+  font-size: 12px;
+}
+
+.version {
+  margin-left: auto;
+  color: #aac3b1;
+}
+
+/* 5. BARRA SUPERIOR */
+
+.topbar {
+  height: 74px;
+  background: #ffffffdd;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 clamp(18px, 3vw, 48px);
+}
+
+.breadcrumbs,
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.topbar-right {
+  color: var(--dim);
+}
+
+.profile-avatar {
+  background: var(--accent);
+  color: var(--green);
+  padding: 9px;
+  border-radius: 50%;
+  font-weight: 700;
+}
+
+.icon-button {
+  width: 39px;
+  height: 39px;
+  border: 1px solid var(--border);
+  background: white;
+  border-radius: 10px;
+  display: inline-grid;
+  place-items: center;
+  color: var(--text);
+}
+
+.mobile-menu,
+.mobile-shade {
+  display: none;
+}
+
+/* 6. ENCABEZADOS */
+
+.page-heading,
+.heading-actions,
+.section-heading,
+.recent-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.page-eyebrow,
+.eyebrow {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  color: var(--green);
+  text-transform: uppercase;
+}
+
+.mini-line {
+  display: inline-block;
+  background: #70bb86;
+  width: 18px;
+  height: 3px;
+  vertical-align: middle;
+  margin-right: 8px;
+}
+
+.page-heading p,
+.muted,
+.modal-subtitle,
+.detail-copy,
+.table-note {
+  color: var(--dim);
+}
+
+.heading-actions {
+  gap: 10px;
+}
+
+/* 7. BOTONES */
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  font-weight: 650;
+  min-height: 42px;
+  text-decoration: none;
+}
+
+.button.primary {
+  background: var(--green);
+  color: white;
+}
+
+.button.primary:hover {
+  background: #165b3a;
+}
+
+.button.secondary {
+  background: white;
+  border-color: var(--border);
+  color: var(--text);
+}
+
+.button.destructive {
+  background: #be3f3f;
+  color: white;
+}
+
+.button.report-button {
+  background: #dbeddd;
+  color: #21613d;
+}
+
+/* 8. EXPORTACION DE DATOS */
+
+.export-wrap {
+  position: relative;
+}
+
+.export-menu {
+  position: absolute;
+  right: 0;
+  top: 100%;
+  z-index: 20;
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  min-width: 210px;
+  padding: 8px;
+}
+
+.export-menu button {
+  display: flex;
+  width: 100%;
+  background: transparent;
+  border: 0;
+  text-align: left;
+  padding: 10px;
+}
+
+.export-menu button:hover {
+  background: var(--input);
+}
+
+/* 9. TARJETAS ESTADISTICAS */
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 17px;
+  margin: 26px 0;
+}
+
+.stat-card,
+.panel,
+.recent-card,
+.record-card,
+.health-card,
+.practice-note {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 17px;
+  box-shadow: var(--shadow);
+  padding: 21px;
+  min-width: 0;
+}
+
+.stat-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--dim);
+}
+
+.stat-icon,
+.tiny-icon,
+.protocol-icon,
+.practice-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #e4f5e9;
+  color: var(--green);
+  border-radius: 11px;
+  padding: 10px;
+}
+
+.stat-value {
+  font-size: 30px;
+  font-weight: 750;
+  color: var(--text);
+  margin: 13px 0 3px;
+}
+
+.stat-pill,
+.badge {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  border-radius: 100px;
+  padding: 4px 9px;
+  background: #e8f7ec;
+  color: #237848;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.badge.orange {
+  background: #fff0d7;
+  color: #98611b;
+}
+
+.badge.gray {
+  background: #edf0ee;
+  color: #63736a;
+}
+
+/* 10. PESTAÑAS Y VISTAS */
+
+.view-bar,
+.view-tabs {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex-wrap: wrap;
+}
+
+.view-bar {
+  justify-content: space-between;
+  margin: 20px 0;
+}
+
+.view-tabs button {
+  border: 1px solid var(--border);
+  background: white;
+  color: var(--dim);
+  border-radius: 9px;
+  padding: 10px 16px;
+}
+
+.view-tabs button.active {
+  background: #dff1e5;
+  color: var(--green);
+  border-color: #b6d8c2;
+  font-weight: 700;
+}
+
+/* 11. PANELES DE ANALISIS */
+
+.analysis-grid,
+.protocol-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+
+.panel {
+  margin-bottom: 18px;
+}
+
+.panel-title,
+.section-heading {
+  margin-bottom: 18px;
+}
+
+/* 12. IMAGENES DE PLANTAS */
+
+.upload-strip,
+.image-empty,
+.empty-state,
+.recent-placeholder {
+  border: 2px dashed #c6dfce;
+  border-radius: 13px;
+  background: #f7fbf7;
+  padding: 34px;
+  text-align: center;
+}
+
+.upload-icon {
+  margin: auto auto 14px;
+  color: var(--green);
+}
+
+.image-top,
+.image-bottom,
+.record-meta,
+.record-values,
+.record-foot,
+.diagnostic-metrics,
+.modal-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.image-shade,
+.scan-frame {
+  position: relative;
+  overflow: hidden;
+  border-radius: 12px;
+}
+
+.scan-frame img,
+.form-photo,
+.record-image img,
+.detail-image {
+  width: 100%;
+  object-fit: contain;
+  border-radius: 10px;
+}
+
+.image-chip {
+  background: #e4f2e7;
+  padding: 6px 12px;
+  border-radius: 8px;
+}
+
+/* 13. FORMULARIOS */
+
+.form-grid,
+.filter-bar,
+.analysis-controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.form-grid label,
+.filter-bar label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-weight: 600;
+}
+
+.form-grid input,
+.form-grid select,
+.form-grid textarea,
+.filter-bar input,
+.filter-bar select,
+.search-field input,
+.scale-input input {
+  border: 1px solid #ccdcd0;
+  background: white;
+  border-radius: 10px;
+  min-height: 42px;
+  padding: 10px 12px;
+  color: var(--text);
+  width: 100%;
+  max-width: 100%;
+}
+
+.form-grid textarea {
+  min-height: 90px;
+}
+
+.span-2 {
+  grid-column: 1 / -1;
+}
+
+/* 14. REGISTROS DE CULTIVO */
+
+.record-grid,
+.recent-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 17px;
+}
+
+.record-card,
+.recent-card {
+  overflow: hidden;
+}
+
+.record-image {
+  background: #f2f8f3;
+}
+
+.record-image img {
+  height: 180px;
+  object-fit: cover;
+}
+
+.record-body {
+  padding: 12px 0;
+}
+
+.record-foot {
+  margin-top: 15px;
+}
+
+.recent-section {
+  margin-top: 25px;
+}
+
+/* 15. TABLAS DE COMPARACION */
+
+.table-scroll {
+  max-width: 100%;
+  overflow: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+th,
+td {
+  border-bottom: 1px solid var(--border);
+  padding: 12px;
+  white-space: nowrap;
+}
+
+th {
+  background: #f1f8f2;
+  color: #426750;
+  font-size: 12px;
+}
+
+td {
+  font-variant-numeric: tabular-nums;
+}
+
+.meter {
+  height: 9px;
+  background: #e4eee8;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.meter > div {
+  height: 100%;
+  background: #46a66c;
+}
+
+/* 16. VENTANAS EMERGENTES */
+
+.modal {
+  color: var(--text);
+  border: 1px solid var(--border);
+  background: white;
+  width: min(620px, calc(100% - 24px));
+  max-height: 90dvh;
+  overflow: auto;
+  border-radius: 17px;
+  padding: 25px;
+  box-shadow: 0 25px 80px #0b241f44;
+}
+
+.modal::backdrop {
+  background: #102c2488;
+}
+
+.modal.wide {
+  width: min(900px, calc(100% - 24px));
+}
+
+.modal-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 15px;
+  margin-bottom: 14px;
+}
+
+.modal-heading h2 {
+  margin: 0;
+}
+
+.modal-actions {
+  margin-top: 22px;
+  justify-content: flex-end;
+}
+
+/* 17. NOTIFICACIONES */
+
+.toast {
+  position: fixed;
+  right: 22px;
+  bottom: 22px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  z-index: 90;
+  background: #174d34;
+  color: white;
+  border-radius: 13px;
+  padding: 14px 19px;
+  box-shadow: var(--shadow);
+  max-width: 420px;
+}
+
+.toast.error {
+  background: #943b35;
+}
+
+.toast button {
+  background: none;
+  color: inherit;
+  border: 0;
+}
+
+/* 18. DETALLES ADICIONALES */
+
+.detail-list,
+.observations,
+.limitations,
+.protocol-steps {
+  line-height: 1.85;
+}
+
+.main-footer {
+  color: var(--dim);
+  font-size: 12px;
+  margin: 30px 0;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+/* 19. REGISTRO Y EDICION DE OBSERVACIONES */
 
 .modal.wide:has(.tracking-form) {
   width: min(960px, calc(100% - 32px));
@@ -49,6 +830,175 @@
 .form-error p {
   margin-top: 6px;
 }
+
+/* 20. MODO OSCURO */
+
+html.dark {
+  color-scheme: dark;
+  --bg: #0c1d17;
+  --surface: #173126;
+  --text: #e8f4ec;
+  --dim: #a9c4b1;
+  --border: #355347;
+  --input: #213f30;
+  --green: #4baa70;
+  --accent: #234c34;
+  --shadow: 0 12px 32px #0003;
+}
+
+html.dark .topbar {
+  background: #173126;
+}
+
+html.dark .button.secondary,
+html.dark .icon-button,
+html.dark .view-tabs button,
+html.dark .export-menu,
+html.dark input,
+html.dark textarea,
+html.dark select {
+  background: #204032;
+  color: var(--text);
+}
+
+html.dark .stat-icon,
+html.dark .tiny-icon,
+html.dark .protocol-icon {
+  background: #234d36;
+}
+
+html.dark .upload-strip,
+html.dark .image-empty,
+html.dark .empty-state,
+html.dark .recent-placeholder,
+html.dark th {
+  background: #1a3a29;
+}
+
+html.dark .modal {
+  background: var(--surface);
+}
+
+html.dark .export-menu button:hover {
+  background: var(--input);
+}
+
+/* 21. TABLETS */
+
+@media (max-width: 1100px) {
+  .stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .record-grid,
+  .recent-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 820px) {
+  .sidebar {
+    position: fixed;
+    left: 0;
+    top: 0;
+    transform: translateX(-100%);
+    transition: transform 0.22s;
+    box-shadow: 0 0 35px #0003;
+  }
+
+  .sidebar.open {
+    transform: translateX(0);
+  }
+
+  .mobile-menu {
+    display: inline-grid;
+  }
+
+  .mobile-shade {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 25;
+    background: #061e1590;
+    border: 0;
+  }
+
+  .analysis-grid,
+  .protocol-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .topbar {
+    height: 65px;
+  }
+
+  .main-shell > main {
+    padding-top: 20px;
+  }
+}
+
+/* 22. CELULARES */
+
+@media (max-width: 600px) {
+  .stats-grid,
+  .record-grid,
+  .recent-grid,
+  .form-grid,
+  .filter-bar,
+  .analysis-controls {
+    grid-template-columns: 1fr;
+  }
+
+  .page-heading {
+    align-items: flex-start;
+  }
+
+  .heading-actions {
+    width: 100%;
+  }
+
+  .heading-actions > .button {
+    flex: 1;
+  }
+
+  .stat-card,
+  .panel,
+  .recent-card,
+  .record-card {
+    padding: 16px;
+  }
+
+  .topbar-right {
+    gap: 8px;
+  }
+
+  .breadcrumbs {
+    gap: 6px;
+  }
+
+  .page-heading h1 {
+    font-size: 28px;
+  }
+
+  .modal {
+    padding: 16px;
+  }
+
+  .view-tabs {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+  }
+
+  .view-tabs button {
+    white-space: nowrap;
+  }
+
+  .span-2 {
+    grid-column: auto;
+  }
+}
+
+/* 23. FORMULARIO EN CELULARES */
 
 @media (max-width: 640px) {
   .modal.wide:has(.tracking-form) {
