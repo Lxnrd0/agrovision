@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import PlantGrowth from "./plant-growth";
 import { compare } from "@/lib/metrics";
 import {
   age,
@@ -13,11 +14,13 @@ import {
 import type { FieldRecord } from "@/lib/types";
 import type { Metric } from "@/lib/tracking";
 
-const metrics: {
+type MetricDefinition = {
   key: Metric;
   label: string;
   unit: string;
-}[] = [
+};
+
+const metrics: MetricDefinition[] = [
   { key: "heightCm", label: "Altura", unit: "cm" },
   { key: "leafCount", label: "Hojas", unit: "hojas" },
   { key: "diameterCm", label: "Diámetro", unit: "cm" },
@@ -98,12 +101,12 @@ function pairedErrors(records: FieldRecord[], metric: Metric) {
       ? pairs.reduce((sum, pair) => sum + pair.error, 0) / n
       : null,
     mape: percentagePairs.length
-      ? percentagePairs.reduce(
-          (sum, pair) => sum + Math.abs(pair.error) / pair.manual,
-          0,
-        ) /
-        percentagePairs.length *
-        100
+      ? (
+          percentagePairs.reduce(
+            (sum, pair) => sum + Math.abs(pair.error) / pair.manual,
+            0,
+          ) / percentagePairs.length
+        ) * 100
       : null,
     percentageN: percentagePairs.length,
     plants: new Set(pairs.map((pair) => plantKey(pair.record))).size,
@@ -160,7 +163,6 @@ export default function Comparison({
             b.createdAt.localeCompare(a.createdAt),
         );
 
-  // Cada lote conserva su propia comparación.
   const rows = invalidRange
     ? []
     : [...new Set(selected.map((record) => record.zone))]
@@ -197,9 +199,14 @@ export default function Comparison({
     ),
   );
 
+  const activePlant = plants.some(
+    (plant) => plantKey(plant) === selectedPlant,
+  )
+    ? selectedPlant
+    : "";
+
   const visibleObservations = observations.filter(
-    (record) =>
-      !selectedPlant || plantKey(record) === selectedPlant,
+    (record) => !activePlant || plantKey(record) === activePlant,
   );
 
   const incomplete = selected.filter(
@@ -229,19 +236,28 @@ export default function Comparison({
 
   return (
     <>
+      <PlantGrowth records={records} />
+
       <div className="section-heading">
         <div>
           <h2>Comparación del crecimiento</h2>
           <p>
-            Resultados de campo por lote, tratamiento y dosis.
+            Resultados por lote, tratamiento y dosis.
             Los promedios usan mediciones manuales.
+            Los filtros siguientes se aplican a las tablas;
+            la gráfica superior muestra el seguimiento completo
+            de la planta que selecciones en ella.
           </p>
         </div>
       </div>
 
       <div
         className="filter-bar"
-        style={{ flexWrap: "wrap", alignItems: "flex-end", gap: 12 }}
+        style={{
+          flexWrap: "wrap",
+          alignItems: "flex-end",
+          gap: 12,
+        }}
       >
         <label style={{ flex: "1 1 180px" }}>
           Lote
@@ -316,12 +332,12 @@ export default function Comparison({
         <p>
           En los filtros actuales: <strong>{plants.length}</strong>{" "}
           plantas distintas y <strong>{observations.length}</strong>{" "}
-          observaciones; {measuredObservations} tienen al menos una
-          medida manual válida.
+          observaciones; {measuredObservations} tienen al menos
+          una medida manual válida.
         </p>
         <p>
-          Se excluyen {incomplete} registros incompletos del lote
-          seleccionado y {examples} ejemplos de la aplicación.
+          Se excluyen {incomplete} registros incompletos de los
+          lotes seleccionados y {examples} ejemplos de la aplicación.
           Los registros se conservan en la bitácora.
         </p>
       </div>
@@ -397,9 +413,10 @@ export default function Comparison({
 
         <div className="table-note">
           <p>
-            n es la cantidad de mediciones manuales válidas del
-            promedio. “—” significa que no hay medidas suficientes;
-            los datos faltantes no cuentan como cero.
+            n es la cantidad de mediciones manuales válidas
+            del promedio. “—” indica que no hay mediciones
+            válidas para calcularlo. Los datos faltantes
+            no cuentan como cero.
           </p>
           <p>
             Una planta puede aparecer aunque todavía no tenga
@@ -408,8 +425,8 @@ export default function Comparison({
           </p>
           <p>
             Para comparar edades semejantes, elige un rango estrecho.
-            Estos resultados describen lo registrado; por sí solos
-            no demuestran qué fertilizante funciona mejor.
+            Con una sola planta por tratamiento, el resultado describe
+            esa planta. Por sí solo no demuestra el efecto del abono.
           </p>
         </div>
       </div>
@@ -426,15 +443,12 @@ export default function Comparison({
       <label style={{ maxWidth: 480, marginBottom: 16 }}>
         Planta que deseas revisar
         <select
-          value={selectedPlant}
+          value={activePlant}
           onChange={(event) => setSelectedPlant(event.target.value)}
         >
           <option value="">Todas las plantas del rango</option>
           {plants.map((plant) => (
-            <option
-              key={plantKey(plant)}
-              value={plantKey(plant)}
-            >
+            <option key={plantKey(plant)} value={plantKey(plant)}>
               {plant.plantId} · {plant.zone} · Siembra{" "}
               {dateLabel(plant.sowingDate)}
             </option>
@@ -484,7 +498,10 @@ export default function Comparison({
 
                   <td>
                     {metrics.map((metric) => {
-                      const measurement = manualValue(record, metric.key);
+                      const measurement = manualValue(
+                        record,
+                        metric.key,
+                      );
 
                       return (
                         <div key={metric.key} style={{ marginBottom: 8 }}>
@@ -593,7 +610,9 @@ export default function Comparison({
           <h2>Comprobación de las estimaciones de IA</h2>
           <p>
             Estimación original frente a medición manual del mismo
-            registro. Se aplican los filtros de lote y edad.
+            registro. Se aplican los filtros de lote y edad,
+            independientemente de la planta seleccionada en la
+            tabla de seguimiento.
           </p>
         </div>
       </div>
@@ -608,7 +627,7 @@ export default function Comparison({
                 <th>Plantas distintas</th>
                 <th>Error absoluto medio</th>
                 <th>Sesgo: IA − manual</th>
-                <th>Error porcentual medio</th>
+                <th>Error porcentual absoluto medio</th>
               </tr>
             </thead>
 
