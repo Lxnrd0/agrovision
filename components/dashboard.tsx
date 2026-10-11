@@ -47,6 +47,7 @@ import Comparison from "./comparison";
 import Protocols from "./protocols";
 import ReportForm from "./report-form";
 import EditObservation from "./edit-observation";
+import BackupControls from "./backup-controls";
 import { Badge, Modal, Toast } from "./ui";
 
 const sections: {
@@ -721,6 +722,19 @@ export default function Dashboard() {
             </div>
           </div>
 
+          {ready && (
+            <BackupControls
+              records={records}
+              notify={notify}
+              onRestored={(next) => {
+                setRecords(next);
+                setLastSync(currentTime());
+                channel.current?.postMessage("changed");
+                setView("history");
+              }}
+            />
+          )}
+
           <div className="view-bar">
             <div
               className="view-tabs"
@@ -958,6 +972,7 @@ export default function Dashboard() {
               "Revisa la gráfica de crecimiento y compara tratamientos con edades semejantes.",
               "Usa Editar observación para corregir fechas, medidas y notas sin duplicar el registro.",
               "Exporta la bitácora a CSV o PDF. Las fotografías no se incluyen en estas exportaciones.",
+              "Guarda periódicamente un respaldo JSON para conservar tus fotografías y observaciones. Al restaurarlo, los registros existentes mantienen su versión actual.",
             ].map((step, index) => (
               <li key={step}>
                 <span>{index + 1}</span>
