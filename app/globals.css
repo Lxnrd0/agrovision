@@ -1,3 +1,7 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 /* Registro y edición de observaciones */
 
 .modal.wide:has(.tracking-form) {
@@ -69,3 +73,9 @@
   }
 }
 ```[cite: 1]
+
+### 2. Verifica la importación en `app/layout.tsx`
+Confirma que el archivo raíz de tu aplicación importe los estilos globales correctamente arriba del todo:
+
+```tsx
+import './globals.css'
