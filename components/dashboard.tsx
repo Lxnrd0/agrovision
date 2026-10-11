@@ -118,6 +118,7 @@ export default function Dashboard() {
   const [exportOpen, setExportOpen] = useState(false);
   const [help, setHelp] = useState(false);
   const [configured, setConfigured] = useState(false);
+  const [requiresToken, setRequiresToken] = useState(false);
 
   const channel = useRef<BroadcastChannel | null>(null);
   const abort = useRef<AbortController | null>(null);
@@ -141,6 +142,7 @@ export default function Dashboard() {
       if (response.ok) {
         const data = await response.json();
         setConfigured(Boolean(data.configured));
+        setRequiresToken(Boolean(data.requiresToken));
       } else {
         setConfigured(false);
       }
@@ -169,7 +171,7 @@ export default function Dashboard() {
       .catch(() => {
         if (!mounted.current) return;
 
-        setReady(true);
+        setReady(false);
         notify(
           "No se pudo abrir el almacenamiento local. Revisa los permisos del navegador.",
           true,
@@ -331,12 +333,24 @@ export default function Dashboard() {
     }
   }
 
-  async function analyze(crop: string, scaleReference: string) {
+  async function analyze(
+    crop: string,
+    scaleReference: string,
+    accessToken = "",
+  ) {
     if (busy) return;
 
     if (!online) {
       notify(
         "El análisis real requiere conexión. Puedes seguir registrando observaciones.",
+        true,
+      );
+      return;
+    }
+
+    if (image === "/radish-sample.jpg") {
+      notify(
+        "Carga una fotografía de tu propia planta antes del análisis real.",
         true,
       );
       return;
@@ -374,6 +388,9 @@ export default function Dashboard() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          ...(accessToken
+            ? { Authorization: `Bearer ${accessToken}` }
+            : {}),
         },
         body: JSON.stringify({
           image: dataImage,
@@ -499,6 +516,7 @@ export default function Dashboard() {
             >
               <section.icon size={19} />
               <span>{section.label}</span>
+
               {section.id === "history" ? (
                 <span className="nav-count">{records.length}</span>
               ) : view === section.id ? (
@@ -715,7 +733,9 @@ export default function Dashboard() {
                 <span className="lot-markers">
                   {["A", "B", "C"]
                     .slice(0, Math.min(stats.zones, 3))
-                    .map((label) => <i key={label}>{label}</i>)}
+                    .map((label) => (
+                      <i key={label}>{label}</i>
+                    ))}
                 </span>
               </div>
               <p>Zonas con registros reales guardados</p>
@@ -801,6 +821,7 @@ export default function Dashboard() {
                 diagnosis={diagnosis}
                 source={source}
                 busy={busy}
+                requiresToken={requiresToken}
                 mode={mode}
                 setMode={setMode}
                 onFile={upload}
@@ -939,6 +960,7 @@ export default function Dashboard() {
             {remove.plantId || remove.zone} del {remove.date}.
             También se actualizarán la gráfica y las tablas.
           </p>
+
           <div className="modal-actions">
             <button
               type="button"
