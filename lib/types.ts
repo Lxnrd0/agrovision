@@ -1,4 +1,5 @@
 export type PlantHealth = "Sano" | "Enfermo" | "Indeterminado";
+
 export type Diagnosis = {
   crop: string;
   bulbColor: string;
@@ -11,8 +12,32 @@ export type Diagnosis = {
   recommendations: string[];
   limitations: string[];
 };
+
+export type MeasurementSource = "manual" | "ia" | "unknown";
+
 export type FieldRecord = Diagnosis & {
   id: string;
+
+  // Identificación y seguimiento de la planta.
+  // Son opcionales para conservar los registros antiguos.
+  plantId?: string;
+  sowingDate?: string;
+  dose?: string;
+  heightCm?: number | null;
+
+  // Origen de cada medida.
+  measurementSources?: Partial<
+    Record<
+      "diameterCm" | "heightCm" | "leafCount",
+      MeasurementSource
+    >
+  >;
+
+  // Estimaciones originales para contrastarlas
+  // con las mediciones manuales.
+  estimatedDiameterCm?: number | null;
+  estimatedLeafCount?: number | null;
+
   collaborator: string;
   date: string;
   zone: string;
@@ -21,4 +46,9 @@ export type FieldRecord = Diagnosis & {
   source: "demo" | "manual" | "openai" | "gemini";
   createdAt: string;
 };
-export type View = "analysis" | "history" | "comparison" | "protocols";
+
+export type View =
+  | "analysis"
+  | "history"
+  | "comparison"
+  | "protocols";
