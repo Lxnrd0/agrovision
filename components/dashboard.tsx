@@ -39,12 +39,14 @@ import {
 } from "@/lib/storage";
 import { summary } from "@/lib/metrics";
 import { exportCsv, exportPdf } from "@/lib/exports";
+import { validateRecord } from "@/lib/tracking";
 
 import AnalysisPanel from "./analysis-panel";
 import History from "./history";
 import Comparison from "./comparison";
 import Protocols from "./protocols";
 import ReportForm from "./report-form";
+import EditObservation from "./edit-observation";
 import { Badge, Modal, Toast } from "./ui";
 
 const sections: {
@@ -107,6 +109,7 @@ export default function Dashboard() {
   } | null>(null);
 
   const [form, setForm] = useState<"new" | "diagnosis" | null>(null);
+  const [editing, setEditing] = useState<FieldRecord | null>(null);
   const [remove, setRemove] = useState<FieldRecord | null>(null);
 
   const [dark, setDark] = useState(true);
@@ -120,12 +123,9 @@ export default function Dashboard() {
   const version = useRef(0);
   const mounted = useRef(true);
 
-  const notify = useCallback(
-    (message: string, error = false) => {
-      setToast({ message, error });
-    },
-    [],
-  );
+  const notify = useCallback((message: string, error = false) => {
+    setToast({ message, error });
+  }, []);
 
   const closeToast = useCallback(() => {
     setToast(null);
@@ -176,9 +176,7 @@ export default function Dashboard() {
       });
 
     try {
-      const savedTheme = localStorage.getItem("agrovision-theme");
-
-      if (savedTheme === "light") {
+      if (localStorage.getItem("agrovision-theme") === "light") {
         setDark(false);
       }
     } catch {}
@@ -238,13 +236,40 @@ export default function Dashboard() {
   }, [dark]);
 
   async function save(record: FieldRecord) {
-    const next = await mutateRecords((rows) => [record, ...rows]);
+    const next = await mutateRecords((rows) => {
+      validateRecord(record, rows);
+      return [record, ...rows];
+    });
 
     setRecords(next);
     setLastSync(currentTime());
     channel.current?.postMessage("changed");
     setView("history");
-    notify("Registro guardado en tu bitácora.");
+    notify("Observación guardada en tu bitácora.");
+  }
+
+  async function saveEdit(record: FieldRecord) {
+    const next = await mutateRecords((rows) => {
+      if (!rows.some((item) => item.id === record.id)) {
+        throw new Error(
+          "La observación ya no existe. Actualiza la bitácora.",
+        );
+      }
+
+      validateRecord(record, rows);
+
+      return rows.map((item) =>
+        item.id === record.id ? record : item,
+      );
+    });
+
+    setRecords(next);
+    setLastSync(currentTime());
+    channel.current?.postMessage("changed");
+    setView("history");
+    notify(
+      "Observación corregida. La gráfica y las tablas se actualizaron.",
+    );
   }
 
   async function deleteRecord() {
@@ -259,22 +284,22 @@ export default function Dashboard() {
       setLastSync(currentTime());
       channel.current?.postMessage("changed");
       setRemove(null);
-      notify("Registro eliminado. La comparativa se actualizó.");
+      notify("Observación eliminada. La comparativa se actualizó.");
     } catch {
-      notify("No se pudo eliminar el registro.", true);
+      notify("No se pudo eliminar la observación.", true);
     }
   }
 
   async function upload(file: File) {
     try {
       const currentVersion = ++version.current;
-      const value = await readImage(file);
+      const result = await readImage(file);
 
       if (currentVersion !== version.current || !mounted.current) {
         return;
       }
 
-      setImage(value);
+      setImage(result);
       setImageName(file.name);
       setDiagnosis(null);
       setSource("manual");
@@ -321,7 +346,6 @@ export default function Dashboard() {
 
     const controller = new AbortController();
     abort.current = controller;
-
     const timer = setTimeout(() => controller.abort(), 65000);
 
     try {
@@ -333,7 +357,9 @@ export default function Dashboard() {
         });
 
         if (!response.ok) {
-          throw new Error("No se pudo cargar la imagen para el análisis.");
+          throw new Error(
+            "No se pudo cargar la imagen para el análisis.",
+          );
         }
 
         const blob = await response.blob();
@@ -359,7 +385,9 @@ export default function Dashboard() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || "No se pudo analizar la imagen.");
+        throw new Error(
+          data.error || "No se pudo analizar la imagen.",
+        );
       }
 
       if (mounted.current) {
@@ -392,7 +420,7 @@ export default function Dashboard() {
 
     try {
       if (!records.length) {
-        notify("Añade un registro antes de exportar.", true);
+        notify("Añade una observación antes de exportar.", true);
         return;
       }
 
@@ -440,7 +468,6 @@ export default function Dashboard() {
           <span className="brand-mark">
             <Sprout size={26} />
           </span>
-
           <span>
             agro<span>vision</span>
             <small>INTELIGENCIA QUE CULTIVA</small>
@@ -451,12 +478,10 @@ export default function Dashboard() {
           <span className="workspace-icon">
             <Leaf size={19} />
           </span>
-
           <div>
             <strong>Mi espacio agrícola</strong>
             <small>Monitoreo de rabanito</small>
           </div>
-
           <ChevronDown size={15} />
         </div>
 
@@ -473,7 +498,6 @@ export default function Dashboard() {
             >
               <section.icon size={19} />
               <span>{section.label}</span>
-
               {section.id === "history" ? (
                 <span className="nav-count">{records.length}</span>
               ) : view === section.id ? (
@@ -488,10 +512,8 @@ export default function Dashboard() {
             <span className="local-icon">
               <HardDrive size={19} />
             </span>
-
             <strong>Tu campo, conectado.</strong>
             <p>Bitácora disponible sin conexión en este navegador.</p>
-
             <div>
               <span className="status-dot" />
               Almacenamiento local
@@ -512,12 +534,10 @@ export default function Dashboard() {
             <span className="workspace-icon">
               <Sprout size={18} />
             </span>
-
             <div>
               <strong>Proyecto agrícola</strong>
               <small>Cultivo de rabanito</small>
             </div>
-
             <span className="version">v1.1</span>
           </div>
         </div>
@@ -534,11 +554,9 @@ export default function Dashboard() {
             >
               <Menu size={20} />
             </button>
-
             <Grid2X2 size={16} />
             <span>Espacio de trabajo</span>
             <ChevronRight size={14} />
-
             <strong>
               {sections.find((section) => section.id === view)?.label}
             </strong>
@@ -547,7 +565,6 @@ export default function Dashboard() {
           <div className="topbar-right">
             <span className={`engine-status ${busy ? "working" : ""}`}>
               <span className="status-dot" />
-
               {!online
                 ? "Sin conexión"
                 : busy
@@ -582,12 +599,12 @@ export default function Dashboard() {
                 <span className="mini-line" />
                 {" "}SISTEMA INTELIGENTE DE MONITOREO AGRÍCOLA
               </div>
-
               <h1>
                 Conoce mejor lo que cultivas<span>.</span>
               </h1>
-
-              <p>Observa, analiza y acompaña cada etapa de tu rabanito.</p>
+              <p>
+                Observa, analiza y acompaña cada etapa de tu rabanito.
+              </p>
             </div>
 
             <div className="heading-actions">
@@ -612,7 +629,6 @@ export default function Dashboard() {
                       <FileSpreadsheet size={17} />
                       Historial en CSV
                     </button>
-
                     <button
                       type="button"
                       onClick={() => void download("pdf")}
@@ -631,7 +647,7 @@ export default function Dashboard() {
                 onClick={() => setForm("new")}
               >
                 <Plus size={18} />
-                Nuevo registro
+                Nueva observación
               </button>
             </div>
           </div>
@@ -644,12 +660,10 @@ export default function Dashboard() {
                   <ScanLine size={19} />
                 </span>
               </div>
-
               <div className="stat-value">
                 {String(stats.count).padStart(2, "0")}
                 <span className="stat-pill">BITÁCORA</span>
               </div>
-
               <p>Registros guardados en tu espacio</p>
             </div>
 
@@ -660,17 +674,16 @@ export default function Dashboard() {
                   <ShieldCheck size={19} />
                 </span>
               </div>
-
               <div className="stat-value">
                 {stats.assessed ? stats.health.toFixed(1) : "—"}
                 <small>%</small>
-
                 <span className="stat-spark">
                   <Activity size={45} strokeWidth={1.4} />
                 </span>
               </div>
-
-              <p>{stats.assessed} observaciones reales con estado declarado</p>
+              <p>
+                {stats.assessed} observaciones reales con estado declarado
+              </p>
             </div>
 
             <div className="stat-card">
@@ -680,13 +693,13 @@ export default function Dashboard() {
                   <Ruler size={19} />
                 </span>
               </div>
-
               <div className="stat-value">
                 {stats.measured ? stats.diameter.toFixed(1) : "—"}
                 <small>cm</small>
               </div>
-
-              <p>{stats.measured} observaciones reales con medida manual</p>
+              <p>
+                {stats.measured} observaciones reales con medida manual
+              </p>
             </div>
 
             <div className="stat-card">
@@ -696,19 +709,14 @@ export default function Dashboard() {
                   <FlaskConical size={19} />
                 </span>
               </div>
-
               <div className="stat-value">
                 {String(stats.zones).padStart(2, "0")}
-
                 <span className="lot-markers">
                   {["A", "B", "C"]
                     .slice(0, Math.min(stats.zones, 3))
-                    .map((label) => (
-                      <i key={label}>{label}</i>
-                    ))}
+                    .map((label) => <i key={label}>{label}</i>)}
                 </span>
               </div>
-
               <p>Zonas con registros reales guardados</p>
             </div>
           </div>
@@ -739,10 +747,8 @@ export default function Dashboard() {
                       const index = sections.findIndex(
                         (item) => item.id === section.id,
                       );
-
                       const direction =
                         event.key === "ArrowRight" ? 1 : -1;
-
                       const next =
                         sections[
                           (index + direction + sections.length) %
@@ -792,6 +798,7 @@ export default function Dashboard() {
               <History
                 records={records}
                 onDelete={setRemove}
+                onEdit={setEditing}
                 onNew={() => setForm("new")}
               />
             ) : view === "comparison" ? (
@@ -808,7 +815,6 @@ export default function Dashboard() {
                   <h2>El pulso de tu campo</h2>
                   <p>Últimas observaciones registradas</p>
                 </div>
-
                 <button
                   type="button"
                   className="text-button"
@@ -834,27 +840,29 @@ export default function Dashboard() {
                         <Leaf size={24} />
                       </div>
                     )}
-
                     <div>
                       <strong>
                         {record.plantId || record.zone}
                         {" "}
                         <span>· {record.crop.split(" · ")[0]}</span>
                       </strong>
-
                       <p>
                         {record.fertilizer}
                         {record.dose ? ` · ${record.dose}` : ""}
                       </p>
-
                       <small>
                         {record.date}
                         {record.source === "demo" ? " · Ejemplo" : ""}
                       </small>
                     </div>
-
                     <Badge
-                      tone={record.health === "Sano" ? "green" : "orange"}
+                      tone={
+                        record.health === "Sano"
+                          ? "green"
+                          : record.health === "Enfermo"
+                            ? "orange"
+                            : "gray"
+                      }
                     >
                       {record.health}
                     </Badge>
@@ -875,7 +883,6 @@ export default function Dashboard() {
               <Sprout size={14} />
               {" "}Cultiva con datos. Decide con criterio.
             </span>
-
             <span>
               {records.some((record) => record.source === "demo")
                 ? "Incluye datos de demostración · Guardado en este navegador"
@@ -897,17 +904,27 @@ export default function Dashboard() {
         />
       )}
 
+      {editing && (
+        <EditObservation
+          key={editing.id}
+          record={editing}
+          records={records}
+          onClose={() => setEditing(null)}
+          onSave={saveEdit}
+          notify={notify}
+        />
+      )}
+
       {remove && (
         <Modal
-          title="¿Eliminar este registro?"
+          title="¿Eliminar esta observación?"
           onClose={() => setRemove(null)}
         >
           <p className="modal-subtitle">
             Se eliminará la observación de{" "}
             {remove.plantId || remove.zone} del {remove.date}.
-            También se actualizará la tabla comparativa.
+            También se actualizarán la gráfica y las tablas.
           </p>
-
           <div className="modal-actions">
             <button
               type="button"
@@ -916,13 +933,12 @@ export default function Dashboard() {
             >
               Cancelar
             </button>
-
             <button
               type="button"
               className="button destructive"
               onClick={() => void deleteRecord()}
             >
-              Eliminar registro
+              Eliminar observación
             </button>
           </div>
         </Modal>
@@ -937,10 +953,11 @@ export default function Dashboard() {
             {[
               "Etiqueta cada planta y registra su lote, fecha de siembra, tratamiento y dosis.",
               "Carga una foto nítida con luz uniforme. Incluye una regla si necesitas estimar el diámetro.",
-              "Revisa las observaciones de la IA. Introduce en el formulario las medidas que hayas verificado manualmente.",
+              "Revisa las observaciones de la IA. Introduce las medidas verificadas manualmente.",
               "En cada visita, elige la misma planta y registra sus medidas, síntomas y fotografía.",
-              "Compara tratamientos con edades semejantes. Revisa cuántas medidas válidas sustentan cada promedio.",
-              "Exporta la bitácora a CSV o PDF para conservar tus observaciones.",
+              "Revisa la gráfica de crecimiento y compara tratamientos con edades semejantes.",
+              "Usa Editar observación para corregir fechas, medidas y notas sin duplicar el registro.",
+              "Exporta la bitácora a CSV o PDF. Las fotografías no se incluyen en estas exportaciones.",
             ].map((step, index) => (
               <li key={step}>
                 <span>{index + 1}</span>
@@ -950,10 +967,9 @@ export default function Dashboard() {
           </ol>
 
           <p className="detail-copy">
-            La confianza de la IA no está calibrada. Una fotografía
-            no confirma una enfermedad ni demuestra el rendimiento
-            agrícola. Contrasta las estimaciones con mediciones
-            manuales y revisa las observaciones en campo.
+            La confianza de la IA no equivale a precisión comprobada.
+            Contrasta las estimaciones con mediciones manuales
+            y revisa los cambios en campo.
           </p>
         </Modal>
       )}
