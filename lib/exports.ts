@@ -1,18 +1,15 @@
 import type { FieldRecord } from "./types";
 import type { Metric } from "./tracking";
 import { csvCell } from "./metrics";
-import {
-  age,
-  growth,
-  origin,
-  value,
-} from "./tracking";
+import { age, growth, origin, value } from "./tracking";
 
-const metrics: {
+type MetricDefinition = {
   key: Metric;
   label: string;
   unit: string;
-}[] = [
+};
+
+const metrics: MetricDefinition[] = [
   { key: "heightCm", label: "Altura", unit: "cm" },
   { key: "leafCount", label: "Hojas", unit: "hojas" },
   { key: "diameterCm", label: "Diámetro", unit: "cm" },
@@ -42,7 +39,10 @@ function sourceLabel(source: FieldRecord["source"]) {
   }
 }
 
-function measurementSource(record: FieldRecord, metric: Metric) {
+function measurementSource(
+  record: FieldRecord,
+  metric: Metric,
+) {
   if (value(record, metric) === null) return "Sin medida";
 
   switch (origin(record, metric)) {
@@ -55,7 +55,10 @@ function measurementSource(record: FieldRecord, metric: Metric) {
   }
 }
 
-function measurementText(record: FieldRecord, metric: Metric) {
+function measurementText(
+  record: FieldRecord,
+  metric: MetricDefinition,
+) {
   const measured = value(record, metric.key);
 
   if (measured === null) return "No medido";
@@ -273,14 +276,16 @@ export async function exportPdf(records: FieldRecord[]) {
 
   autoTable(doc, {
     startY: 59,
-    head: [[
-      "Planta",
-      "Observación",
-      "Edad",
-      "Lote",
-      "Tratamiento",
-      "Tipo",
-    ]],
+    head: [
+      [
+        "Planta",
+        "Observación",
+        "Edad",
+        "Lote",
+        "Tratamiento",
+        "Tipo",
+      ],
+    ],
     body: ordered.map((record) => [
       record.plantId || "Sin identificar",
       record.date,
@@ -294,8 +299,14 @@ export async function exportPdf(records: FieldRecord[]) {
       cellPadding: 3,
       overflow: "linebreak",
     },
-    headStyles: { fillColor: [35, 78, 49] },
-    margin: { left: 14, right: 14, bottom: 18 },
+    headStyles: {
+      fillColor: [35, 78, 49],
+    },
+    margin: {
+      left: 14,
+      right: 14,
+      bottom: 18,
+    },
   });
 
   for (const record of ordered) {
