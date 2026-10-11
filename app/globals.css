@@ -74,4 +74,18 @@
 }
 ```[cite: 1]
 
-Copia todo este bloque, pégalo en el archivo `app/globals.css` en GitHub, dale a **Commit changes** y verás que Vercel compila sin errores al instante.
+<Steps>
+  <Step subtitle="GitHub" title="Actualizar archivo">
+    Entra a GitHub, abre el archivo `app/globals.css`, borra todo lo que tenga y pega únicamente el bloque de código de arriba. Guarda los cambios haciendo clic en **Commit changes**.
+  </Step>
+  <Step subtitle="Vercel" title="Verificar despliegue">
+    Ve a tu panel de Vercel y revisa la pestaña **Deployments**. El estado cambiará automáticamente a verde (Ready) cuando termine de compilar con éxito.
+  </Step>
+</Steps>
+
+Para confirmar si el paso fue exitoso, el indicador de compilación en Vercel debe pasar de rojo a verde sin mostrar errores de sintaxis.
+
+<Elicitations message="¿Qué deseas hacer ahora?">
+  <Elicitation label="Verificar los componentes" query="¿Cómo puedo verificar los componentes del proyecto?"/>
+  <Elicitation label="Revisar errores de compilación" query="¿Cómo puedo revisar los logs de error en Vercel?"/>
+</Elicitations>
