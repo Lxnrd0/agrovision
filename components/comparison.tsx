@@ -121,6 +121,7 @@ export default function Comparison({
   const [zone, setZone] = useState("");
   const [minAge, setMinAge] = useState("");
   const [maxAge, setMaxAge] = useState("");
+  const [exactAge, setExactAge] = useState("");
   const [selectedPlant, setSelectedPlant] = useState("");
 
   const real = records.filter((record) => record.source !== "demo");
@@ -132,10 +133,14 @@ export default function Comparison({
     (record) => !zone || record.zone === zone,
   );
 
-  const minimum = minAge === "" ? undefined : Number(minAge);
-  const maximum = maxAge === "" ? undefined : Number(maxAge);
+  // Si se selecciona una edad exacta, tiene prioridad sobre el rango.
+  const targetAge = exactAge === "" ? undefined : Number(exactAge);
+  const minimum = targetAge ?? (minAge === "" ? undefined : Number(minAge));
+  const maximum = targetAge ?? (maxAge === "" ? undefined : Number(maxAge));
 
   const invalidRange =
+    (targetAge !== undefined &&
+      (!Number.isInteger(targetAge) || targetAge < 0)) ||
     (minimum !== undefined &&
       (!Number.isInteger(minimum) || minimum < 0)) ||
     (maximum !== undefined &&
@@ -172,6 +177,7 @@ export default function Comparison({
             {
               minAge: minimum,
               maxAge: maximum,
+              targetAge,
               origin: "manual",
             },
           ).map((row) => ({
@@ -307,6 +313,21 @@ export default function Comparison({
           />
         </label>
 
+        <label style={{ flex: "1 1 140px" }}>
+          Edad exacta (días)
+          <input
+            type="number"
+            min="0"
+            step="1"
+            value={exactAge}
+            placeholder="Ejemplo: 14"
+            onChange={(event) => {
+              setExactAge(event.target.value);
+              setSelectedPlant("");
+            }}
+          />
+        </label>
+
         <button
           type="button"
           className="button secondary"
@@ -314,6 +335,7 @@ export default function Comparison({
             setZone("");
             setMinAge("");
             setMaxAge("");
+            setExactAge("");
             setSelectedPlant("");
           }}
         >
@@ -336,6 +358,9 @@ export default function Comparison({
           una medida manual válida.
         </p>
         <p>
+          {targetAge !== undefined && !invalidRange && (
+            <>Comparando exclusivamente el día {targetAge}. </>
+          )}
           Se excluyen {incomplete} registros incompletos de los
           lotes seleccionados y {examples} ejemplos de la aplicación.
           Los registros se conservan en la bitácora.
@@ -352,7 +377,7 @@ export default function Comparison({
                 color: "var(--muted)",
               }}
             >
-              Última observación de cada planta dentro del rango de edad
+              Última observación válida de cada planta dentro de la edad seleccionada
             </caption>
 
             <thead>
@@ -384,16 +409,22 @@ export default function Comparison({
                     {format(row.height)}
                     <br />
                     <small>n = {row.heightN}</small>
+                    <br />
+                    <small>DE = {format(row.heightSD)}</small>
                   </td>
                   <td>
                     {format(row.leaves, 1)}
                     <br />
                     <small>n = {row.leavesN}</small>
+                    <br />
+                    <small>DE = {format(row.leavesSD, 1)}</small>
                   </td>
                   <td>
                     {format(row.diameter)}
                     <br />
                     <small>n = {row.measured}</small>
+                    <br />
+                    <small>DE = {format(row.diameterSD)}</small>
                   </td>
                 </tr>
               ))}
@@ -415,8 +446,9 @@ export default function Comparison({
           <p>
             n es la cantidad de mediciones manuales válidas
             del promedio. “—” indica que no hay mediciones
-            válidas para calcularlo. Los datos faltantes
-            no cuentan como cero.
+            válidas para calcularlo; DE es la desviación estándar
+            muestral y requiere al menos dos mediciones. Los datos
+            faltantes no cuentan como cero.
           </p>
           <p>
             Una planta puede aparecer aunque todavía no tenga
@@ -424,10 +456,16 @@ export default function Comparison({
             por una medida antigua para completar un promedio.
           </p>
           <p>
-            Para comparar edades semejantes, elige un rango estrecho.
+            Para una comparación directa, selecciona una edad exacta.
             Con una sola planta por tratamiento, el resultado describe
             esa planta. Por sí solo no demuestra el efecto del abono.
           </p>
+          {rows.some((row) => !row.sameAge) && (
+            <p role="note">
+              Atención: algunos tratamientos mezclan edades distintas.
+              Selecciona una edad exacta para una comparación más justa.
+            </p>
+          )}
         </div>
       </div>
 
