@@ -142,6 +142,7 @@ export function exportCsv(records: FieldRecord[]) {
     "Es ejemplo",
     "Tiene fotografía",
     "Síntomas y observaciones",
+    "Observaciones originales IA",
     "Recomendaciones IA",
     "Limitaciones",
     "Fecha de creación",
@@ -197,6 +198,7 @@ export function exportCsv(records: FieldRecord[]) {
       record.image ? "Sí" : "No",
 
       record.observations.join(" | "),
+      (record.aiObservations ?? []).join(" | "),
       record.recommendations.join(" | "),
       record.limitations.join(" | "),
       record.createdAt,
@@ -383,6 +385,11 @@ export async function exportPdf(records: FieldRecord[]) {
         "Síntomas / observaciones",
         record.observations.join("\n") ||
           "Sin observaciones escritas",
+      ],
+      [
+        "Observaciones originales IA",
+        (record.aiObservations ?? []).join("\n") ||
+          "Sin observaciones originales guardadas",
       ],
       [
         "Recomendaciones IA",
