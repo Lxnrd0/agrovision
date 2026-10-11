@@ -28,6 +28,7 @@ import {
   HardDrive,
   CircleHelp,
 } from "lucide-react";
+
 import { demoDiagnosis, demoRecords } from "@/lib/demo";
 import type { Diagnosis, FieldRecord, View } from "@/lib/types";
 import {
@@ -38,6 +39,7 @@ import {
 } from "@/lib/storage";
 import { summary } from "@/lib/metrics";
 import { exportCsv, exportPdf } from "@/lib/exports";
+
 import AnalysisPanel from "./analysis-panel";
 import History from "./history";
 import Comparison from "./comparison";
@@ -88,20 +90,25 @@ export default function Dashboard() {
   const [view, setView] = useState<View>("analysis");
   const [records, setRecords] = useState<FieldRecord[]>([]);
   const [ready, setReady] = useState(false);
+
   const [image, setImage] = useState("/radish-sample.jpg");
   const [imageName, setImageName] = useState("Muestra de rabanito");
   const [diagnosis, setDiagnosis] = useState<Diagnosis | null>(null);
   const [source, setSource] = useState<FieldRecord["source"]>("demo");
   const [mode, setMode] = useState<"demo" | "real">("real");
+
   const [busy, setBusy] = useState(false);
   const [online, setOnline] = useState(true);
   const [lastSync, setLastSync] = useState("");
+
   const [toast, setToast] = useState<{
     message: string;
     error?: boolean;
   } | null>(null);
+
   const [form, setForm] = useState<"new" | "diagnosis" | null>(null);
   const [remove, setRemove] = useState<FieldRecord | null>(null);
+
   const [dark, setDark] = useState(true);
   const [menu, setMenu] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
@@ -114,11 +121,15 @@ export default function Dashboard() {
   const mounted = useRef(true);
 
   const notify = useCallback(
-    (message: string, error = false) => setToast({ message, error }),
+    (message: string, error = false) => {
+      setToast({ message, error });
+    },
     [],
   );
 
-  const closeToast = useCallback(() => setToast(null), []);
+  const closeToast = useCallback(() => {
+    setToast(null);
+  }, []);
 
   const refreshEngine = useCallback(async () => {
     try {
@@ -166,14 +177,20 @@ export default function Dashboard() {
 
     try {
       const savedTheme = localStorage.getItem("agrovision-theme");
-      if (savedTheme === "light") setDark(false);
+
+      if (savedTheme === "light") {
+        setDark(false);
+      }
     } catch {}
 
     setOnline(navigator.onLine);
 
     const updateConnection = () => {
       setOnline(navigator.onLine);
-      if (navigator.onLine) void refreshEngine();
+
+      if (navigator.onLine) {
+        void refreshEngine();
+      }
     };
 
     window.addEventListener("online", updateConnection);
@@ -181,6 +198,7 @@ export default function Dashboard() {
 
     if ("BroadcastChannel" in window) {
       channel.current = new BroadcastChannel("agrovision-records");
+
       channel.current.onmessage = () => {
         readRecords()
           .then((saved) => {
@@ -252,7 +270,9 @@ export default function Dashboard() {
       const currentVersion = ++version.current;
       const value = await readImage(file);
 
-      if (currentVersion !== version.current || !mounted.current) return;
+      if (currentVersion !== version.current || !mounted.current) {
+        return;
+      }
 
       setImage(value);
       setImageName(file.name);
@@ -360,7 +380,10 @@ export default function Dashboard() {
       }
     } finally {
       clearTimeout(timer);
-      if (mounted.current) setBusy(false);
+
+      if (mounted.current) {
+        setBusy(false);
+      }
     }
   }
 
@@ -409,14 +432,15 @@ export default function Dashboard() {
         <a
           className="brand"
           href="#"
-          onClick={(e) => {
-            e.preventDefault();
+          onClick={(event) => {
+            event.preventDefault();
             choose("analysis");
           }}
         >
           <span className="brand-mark">
             <Sprout size={26} />
           </span>
+
           <span>
             agro<span>vision</span>
             <small>INTELIGENCIA QUE CULTIVA</small>
@@ -427,10 +451,12 @@ export default function Dashboard() {
           <span className="workspace-icon">
             <Leaf size={19} />
           </span>
+
           <div>
             <strong>Mi espacio agrícola</strong>
             <small>Monitoreo de rabanito</small>
           </div>
+
           <ChevronDown size={15} />
         </div>
 
@@ -462,8 +488,10 @@ export default function Dashboard() {
             <span className="local-icon">
               <HardDrive size={19} />
             </span>
+
             <strong>Tu campo, conectado.</strong>
             <p>Bitácora disponible sin conexión en este navegador.</p>
+
             <div>
               <span className="status-dot" />
               Almacenamiento local
@@ -484,11 +512,13 @@ export default function Dashboard() {
             <span className="workspace-icon">
               <Sprout size={18} />
             </span>
+
             <div>
               <strong>Proyecto agrícola</strong>
               <small>Cultivo de rabanito</small>
             </div>
-            <span className="version">v1.0</span>
+
+            <span className="version">v1.1</span>
           </div>
         </div>
       </aside>
@@ -504,9 +534,11 @@ export default function Dashboard() {
             >
               <Menu size={20} />
             </button>
+
             <Grid2X2 size={16} />
             <span>Espacio de trabajo</span>
             <ChevronRight size={14} />
+
             <strong>
               {sections.find((section) => section.id === view)?.label}
             </strong>
@@ -515,13 +547,14 @@ export default function Dashboard() {
           <div className="topbar-right">
             <span className={`engine-status ${busy ? "working" : ""}`}>
               <span className="status-dot" />
+
               {!online
                 ? "Sin conexión"
                 : busy
                   ? "Motor de visión activo"
                   : configured
                     ? "Motor de visión listo"
-                    : "Motor en demostración"}
+                    : "Motor de IA sin configurar"}
             </span>
 
             <span className="topbar-divider" />
@@ -549,9 +582,11 @@ export default function Dashboard() {
                 <span className="mini-line" />
                 {" "}SISTEMA INTELIGENTE DE MONITOREO AGRÍCOLA
               </div>
+
               <h1>
                 Conoce mejor lo que cultivas<span>.</span>
               </h1>
+
               <p>Observa, analiza y acompaña cada etapa de tu rabanito.</p>
             </div>
 
@@ -577,6 +612,7 @@ export default function Dashboard() {
                       <FileSpreadsheet size={17} />
                       Historial en CSV
                     </button>
+
                     <button
                       type="button"
                       onClick={() => void download("pdf")}
@@ -603,47 +639,54 @@ export default function Dashboard() {
           <div className="stats-grid">
             <div className="stat-card">
               <div className="stat-top">
-                <span>Muestras registradas</span>
+                <span>Observaciones registradas</span>
                 <span className="stat-icon">
                   <ScanLine size={19} />
                 </span>
               </div>
+
               <div className="stat-value">
                 {String(stats.count).padStart(2, "0")}
                 <span className="stat-pill">BITÁCORA</span>
               </div>
-              <p>Observaciones en tu espacio</p>
+
+              <p>Registros guardados en tu espacio</p>
             </div>
 
             <div className="stat-card">
               <div className="stat-top">
-                <span>Plantas saludables</span>
+                <span>Observaciones clasificadas como sanas</span>
                 <span className="stat-icon">
                   <ShieldCheck size={19} />
                 </span>
               </div>
+
               <div className="stat-value">
                 {stats.assessed ? stats.health.toFixed(1) : "—"}
                 <small>%</small>
+
                 <span className="stat-spark">
                   <Activity size={45} strokeWidth={1.4} />
                 </span>
               </div>
-              <p>{stats.assessed} muestras con estado evaluado</p>
+
+              <p>{stats.assessed} observaciones reales con estado declarado</p>
             </div>
 
             <div className="stat-card">
               <div className="stat-top">
-                <span>Diámetro promedio</span>
+                <span>Diámetro manual promedio</span>
                 <span className="stat-icon">
                   <Ruler size={19} />
                 </span>
               </div>
+
               <div className="stat-value">
-                {stats.diameter ? stats.diameter.toFixed(1) : "—"}
+                {stats.measured ? stats.diameter.toFixed(1) : "—"}
                 <small>cm</small>
               </div>
-              <p>Sobre muestras con medida</p>
+
+              <p>{stats.measured} observaciones reales con medida manual</p>
             </div>
 
             <div className="stat-card">
@@ -653,8 +696,10 @@ export default function Dashboard() {
                   <FlaskConical size={19} />
                 </span>
               </div>
+
               <div className="stat-value">
                 {String(stats.zones).padStart(2, "0")}
+
                 <span className="lot-markers">
                   {["A", "B", "C"]
                     .slice(0, Math.min(stats.zones, 3))
@@ -663,7 +708,8 @@ export default function Dashboard() {
                     ))}
                 </span>
               </div>
-              <p>Zonas con registros guardados</p>
+
+              <p>Zonas con registros reales guardados</p>
             </div>
           </div>
 
@@ -683,14 +729,20 @@ export default function Dashboard() {
                   aria-controls="module-panel"
                   className={view === section.id ? "active" : ""}
                   onClick={() => setView(section.id)}
-                  onKeyDown={(e) => {
-                    if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
-                      e.preventDefault();
+                  onKeyDown={(event) => {
+                    if (
+                      event.key === "ArrowRight" ||
+                      event.key === "ArrowLeft"
+                    ) {
+                      event.preventDefault();
 
                       const index = sections.findIndex(
                         (item) => item.id === section.id,
                       );
-                      const direction = e.key === "ArrowRight" ? 1 : -1;
+
+                      const direction =
+                        event.key === "ArrowRight" ? 1 : -1;
+
                       const next =
                         sections[
                           (index + direction + sections.length) %
@@ -709,7 +761,8 @@ export default function Dashboard() {
             </div>
 
             <span className="sync-label">
-              {online ? <Cloud size={15} /> : <WifiOff size={15} />}{" "}
+              {online ? <Cloud size={15} /> : <WifiOff size={15} />}
+              {" "}
               {lastSync
                 ? `Guardado local · ${lastSync}`
                 : "Preparando bitácora"}
@@ -755,6 +808,7 @@ export default function Dashboard() {
                   <h2>El pulso de tu campo</h2>
                   <p>Últimas observaciones registradas</p>
                 </div>
+
                 <button
                   type="button"
                   className="text-button"
@@ -783,10 +837,16 @@ export default function Dashboard() {
 
                     <div>
                       <strong>
-                        {record.zone}{" "}
+                        {record.plantId || record.zone}
+                        {" "}
                         <span>· {record.crop.split(" · ")[0]}</span>
                       </strong>
-                      <p>{record.fertilizer}</p>
+
+                      <p>
+                        {record.fertilizer}
+                        {record.dose ? ` · ${record.dose}` : ""}
+                      </p>
+
                       <small>
                         {record.date}
                         {record.source === "demo" ? " · Ejemplo" : ""}
@@ -815,6 +875,7 @@ export default function Dashboard() {
               <Sprout size={14} />
               {" "}Cultiva con datos. Decide con criterio.
             </span>
+
             <span>
               {records.some((record) => record.source === "demo")
                 ? "Incluye datos de demostración · Guardado en este navegador"
@@ -826,6 +887,7 @@ export default function Dashboard() {
 
       {form && (
         <ReportForm
+          records={records}
           diagnosis={form === "diagnosis" ? diagnosis : null}
           image={form === "diagnosis" ? image : ""}
           source={form === "diagnosis" ? source : "manual"}
@@ -841,7 +903,8 @@ export default function Dashboard() {
           onClose={() => setRemove(null)}
         >
           <p className="modal-subtitle">
-            Se eliminará la observación de {remove.zone} del {remove.date}.
+            Se eliminará la observación de{" "}
+            {remove.plantId || remove.zone} del {remove.date}.
             También se actualizará la tabla comparativa.
           </p>
 
@@ -853,6 +916,7 @@ export default function Dashboard() {
             >
               Cancelar
             </button>
+
             <button
               type="button"
               className="button destructive"
@@ -866,15 +930,17 @@ export default function Dashboard() {
 
       {help && (
         <Modal
-          title="De la fotografía al registro"
+          title="De la fotografía al seguimiento"
           onClose={() => setHelp(false)}
         >
           <ol className="protocol-steps">
             {[
+              "Etiqueta cada planta y registra su lote, fecha de siembra, tratamiento y dosis.",
               "Carga una foto nítida con luz uniforme. Incluye una regla si necesitas estimar el diámetro.",
-              "Prueba la demostración o selecciona Gemini · Visión IA con la clave configurada en el servidor.",
-              "Revisa las observaciones y usa el diagnóstico para completar un reporte de campo.",
-              "Compara las muestras por fertilizante y exporta la bitácora a CSV o PDF.",
+              "Revisa las observaciones de la IA. Introduce en el formulario las medidas que hayas verificado manualmente.",
+              "En cada visita, elige la misma planta y registra sus medidas, síntomas y fotografía.",
+              "Compara tratamientos con edades semejantes. Revisa cuántas medidas válidas sustentan cada promedio.",
+              "Exporta la bitácora a CSV o PDF para conservar tus observaciones.",
             ].map((step, index) => (
               <li key={step}>
                 <span>{index + 1}</span>
@@ -884,9 +950,10 @@ export default function Dashboard() {
           </ol>
 
           <p className="detail-copy">
-            La confianza de la IA no está calibrada. Una imagen no permite
-            confirmar una enfermedad ni medir rendimiento agrícola. Valida
-            las observaciones en campo.
+            La confianza de la IA no está calibrada. Una fotografía
+            no confirma una enfermedad ni demuestra el rendimiento
+            agrícola. Contrasta las estimaciones con mediciones
+            manuales y revisa las observaciones en campo.
           </p>
         </Modal>
       )}
