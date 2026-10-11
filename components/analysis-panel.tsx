@@ -125,16 +125,6 @@ export default function AnalysisPanel({
                   : imageName || "Nueva muestra"}
               </h3>
             </div>
-
-            <button
-              type="button"
-              className="image-change"
-              onClick={() => input.current?.click()}
-              disabled={busy}
-              aria-label="Cambiar fotografía"
-            >
-              <ImagePlus size={20} />
-            </button>
           </div>
         </div>
 
