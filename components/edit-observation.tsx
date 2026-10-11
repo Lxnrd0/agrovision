@@ -60,11 +60,14 @@ export default function EditObservation({
   notify,
 }: Props) {
   const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState("");
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     if (saving) return;
+
+    setFormError("");
 
     const data = new FormData(event.currentTarget);
 
@@ -117,12 +120,13 @@ export default function EditObservation({
       await onSave(updated);
       onClose();
     } catch (error) {
-      notify(
+      const message =
         error instanceof Error
           ? error.message
-          : "No se pudo guardar la corrección.",
-        true,
-      );
+          : "No se pudo guardar la corrección.";
+
+      setFormError(message);
+      notify(message, true);
     } finally {
       setSaving(false);
     }
@@ -250,6 +254,13 @@ export default function EditObservation({
             Vacío significa que no hay medida; cero es un valor real.
           </p>
         </fieldset>
+
+        {formError && (
+          <div className="form-error" role="alert">
+            <strong>No se pudo guardar</strong>
+            <p>{formError}</p>
+          </div>
+        )}
 
         <div className="modal-actions">
           <button
