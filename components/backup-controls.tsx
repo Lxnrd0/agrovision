@@ -151,6 +151,18 @@ function isRecord(input: unknown): input is FieldRecord {
     }
   }
 
+  if (
+    input.aiObservations !== undefined &&
+    (
+      !Array.isArray(input.aiObservations) ||
+      input.aiObservations.some(
+        (item) => typeof item !== "string",
+      )
+    )
+  ) {
+    return false;
+  }
+
   const photo = input.image as string;
 
   if (
@@ -183,8 +195,8 @@ async function restoreIntoStorage(incoming: FieldRecord[]) {
     records: FieldRecord[];
     added: number;
   }>((resolve, reject) => {
-    const tx = db.transaction("data", "readwrite");
-    const store = tx.objectStore("data");
+    const transaction = db.transaction("data", "readwrite");
+    const store = transaction.objectStore("data");
     const request = store.get("records");
 
     let next: FieldRecord[] = [];
@@ -226,20 +238,20 @@ async function restoreIntoStorage(incoming: FieldRecord[]) {
         store.put(next, "records");
       } catch (error) {
         failure = error;
-        tx.abort();
+        transaction.abort();
       }
     };
 
-    tx.oncomplete = () => {
+    transaction.oncomplete = () => {
       db.close();
       resolve({ records: next, added });
     };
 
-    tx.onabort = tx.onerror = () => {
+    transaction.onabort = transaction.onerror = () => {
       db.close();
       reject(
         failure ??
-          tx.error ??
+          transaction.error ??
           new Error("No se pudo restaurar el respaldo."),
       );
     };
