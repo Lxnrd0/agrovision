@@ -8,7 +8,7 @@ import type {
   PlantHealth,
 } from "@/lib/types";
 import { readImage } from "@/lib/storage";
-import { plantKey, validateRecord } from "@/lib/tracking";
+import { daysBetween, plantKey, validateRecord } from "@/lib/tracking";
 import { Modal, Loading } from "./ui";
 import { Save, Upload } from "lucide-react";
 
@@ -78,9 +78,19 @@ export default function ReportForm({
   const [doseUnit, setDoseUnit] = useState("g/planta");
   const [doseFrequency, setDoseFrequency] = useState("");
   const [observationDate, setObservationDate] = useState(today);
+  const [watering, setWatering] = useState("no-registrado");
+  const [waterAmount, setWaterAmount] = useState("");
+  const [soilMoisture, setSoilMoisture] = useState("no-evaluada");
+  const [airTemperature, setAirTemperature] = useState("");
 
   const busy = saving || loadingPhoto;
   const isExisting = selectedId !== "";
+  const calculatedAge = sowingDate && observationDate
+    ? daysBetween(sowingDate, observationDate)
+    : NaN;
+  const validAge = Number.isInteger(calculatedAge) && calculatedAge >= 0
+    ? calculatedAge
+    : null;
 
   const plants = useMemo(() => {
     const latest = new Map<string, FieldRecord>();
@@ -153,6 +163,8 @@ export default function ReportForm({
     const manualDiameter = number("diameterCm");
     const manualLeaves = number("leafCount");
     const manualHeight = number("heightCm");
+    const irrigationAmount = waterAmount.trim() === "" ? null : Number(waterAmount);
+    const temperature = airTemperature.trim() === "" ? null : Number(airTemperature);
 
     const estimate = photo === image ? diagnosis : null;
 
@@ -218,6 +230,46 @@ export default function ReportForm({
         dose = `${amount} ${doseUnit}; ${doseFrequency}`;
       }
 
+      if (
+        (irrigationAmount !== null &&
+          (!Number.isFinite(irrigationAmount) || irrigationAmount <= 0)) ||
+        (watering !== "si" && irrigationAmount !== null)
+      ) {
+        throw new Error(
+          "El volumen de riego debe ser positivo y solo se registra si hubo riego.",
+        );
+      }
+
+      if (
+        temperature !== null &&
+        (!Number.isFinite(temperature) || temperature < -20 || temperature > 60)
+      ) {
+        throw new Error("Revisa la temperatura ambiental ingresada (°C).");
+      }
+
+      // Por compatibilidad con el historial actual, estas condiciones
+      // se guardan como notas, NO como variables numéricas para gráficas.
+      const fieldConditions: string[] = [];
+      if (watering === "si") {
+        fieldConditions.push(
+          `Riego realizado${irrigationAmount === null ? " (volumen no medido)" : `: ${irrigationAmount} mL por planta`}`,
+        );
+      } else if (watering === "no") {
+        fieldConditions.push("No se realizó riego en esta observación");
+      }
+      if (soilMoisture !== "no-evaluada") {
+        const moistureLabels: Record<string, string> = {
+          seca: "Seca al tacto",
+          intermedia: "Intermedia al tacto",
+          humeda: "Húmeda al tacto",
+        };
+        const moistureLabel = moistureLabels[soilMoisture];
+        if (moistureLabel) fieldConditions.push(`Humedad aparente del suelo: ${moistureLabel}`);
+      }
+      if (temperature !== null) {
+        fieldConditions.push(`Temperatura ambiental medida: ${temperature} °C`);
+      }
+
       const record: FieldRecord = {
         id: crypto.randomUUID(),
         createdAt: new Date().toISOString(),
@@ -254,10 +306,13 @@ export default function ReportForm({
         health: text("health") as PlantHealth,
         confidence: estimate?.confidence ?? 0,
 
-        observations: text("observations")
-          .split("\n")
-          .map((line) => line.trim())
-          .filter(Boolean),
+        observations: [
+          ...text("observations")
+            .split("\n")
+            .map((line) => line.trim())
+            .filter(Boolean),
+          ...fieldConditions,
+        ],
 
         aiObservations: estimate?.observations ?? [],
         recommendations: estimate?.recommendations ?? [],
@@ -536,6 +591,12 @@ export default function ReportForm({
               />
             </label>
 
+            <div className="span-2" role="status" style={noteStyle}>
+              Edad de cultivo en esta visita: <strong>
+                {validAge === null ? "Selecciona fechas válidas" : `${validAge} días desde la siembra`}
+              </strong>
+            </div>
+
             <label>
               Responsable *
               <input
@@ -601,7 +662,64 @@ export default function ReportForm({
 
         <fieldset style={sectionStyle} disabled={busy}>
           <legend style={legendStyle}>
-            4. Estado, síntomas y fotografía
+            4. Riego y condiciones del cultivo (opcional)
+          </legend>
+          <p style={noteStyle}>
+            Registra solo condiciones observadas o medidas realmente.
+            Estos datos aparecerán en la bitácora como notas; por ahora
+            no se usan para calcular promedios ni gráficos.
+          </p>
+          <div className="form-grid">
+            <label>
+              ¿Se regó en esta visita?
+              <select value={watering} onChange={(event) => {
+                setWatering(event.target.value);
+                if (event.target.value !== "si") setWaterAmount("");
+              }}>
+                <option value="no-registrado">No registrado</option>
+                <option value="si">Sí</option>
+                <option value="no">No</option>
+              </select>
+            </label>
+            <label>
+              Agua aplicada (mL por planta)
+              <input
+                type="number"
+                min="0.01"
+                step="any"
+                value={waterAmount}
+                disabled={watering !== "si"}
+                onChange={(event) => setWaterAmount(event.target.value)}
+                placeholder="Solo si mediste el volumen"
+              />
+            </label>
+            <label>
+              Humedad aparente del suelo
+              <select value={soilMoisture} onChange={(event) => setSoilMoisture(event.target.value)}>
+                <option value="no-evaluada">No evaluada</option>
+                <option value="seca">Seca al tacto</option>
+                <option value="intermedia">Intermedia al tacto</option>
+                <option value="humeda">Húmeda al tacto</option>
+              </select>
+            </label>
+            <label>
+              Temperatura ambiental (°C)
+              <input
+                type="number"
+                min="-20"
+                max="60"
+                step="0.1"
+                value={airTemperature}
+                onChange={(event) => setAirTemperature(event.target.value)}
+                placeholder="Opcional, medida con termómetro"
+              />
+            </label>
+          </div>
+        </fieldset>
+
+        <fieldset style={sectionStyle} disabled={busy}>
+          <legend style={legendStyle}>
+            5. Estado, síntomas y fotografía
           </legend>
 
           <div className="form-grid">
