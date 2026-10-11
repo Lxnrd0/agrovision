@@ -1,9 +1,32 @@
 "use client";
+
 import { useState } from "react";
-import { Diagnosis, FieldRecord, PlantHealth } from "@/lib/types";
+import type { FormEvent } from "react";
+import type { Diagnosis, FieldRecord, PlantHealth } from "@/lib/types";
 import { readImage } from "@/lib/storage";
 import { Modal, Loading } from "./ui";
 import { Save, Upload } from "lucide-react";
+
+type ReportFormProps = {
+  diagnosis: Diagnosis | null;
+  image: string;
+  source: FieldRecord["source"];
+  onClose: () => void;
+  onSave: (record: FieldRecord) => Promise<void>;
+  notify: (message: string, error?: boolean) => void;
+};
+
+const CROP = "Rabanito";
+
+function getLocalDate() {
+  const date = new Date();
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
 export default function ReportForm({
   diagnosis,
   image,
@@ -11,23 +34,30 @@ export default function ReportForm({
   onClose,
   onSave,
   notify,
-}: {
-  diagnosis: Diagnosis | null;
-  image: string;
-  source: FieldRecord["source"];
-  onClose: () => void;
-  onSave: (record: FieldRecord) => Promise<void>;
-  notify: (s: string, e?: boolean) => void;
-}) {
+}: ReportFormProps) {
   const [photo, setPhoto] = useState(image);
   const [saving, setSaving] = useState(false);
-  async function submit(e: React.FormEvent<HTMLFormElement>) {
+  const [loadingPhoto, setLoadingPhoto] = useState(false);
+  const [defaultDate] = useState(getLocalDate);
+
+  const busy = saving || loadingPhoto;
+
+  async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    setSaving(true);
+    if (busy) return;
+
     const data = new FormData(e.currentTarget);
-    const str = (name: string) => String(data.get(name) || "").trim();
-    const number = (name: string) =>
-      str(name) === "" ? null : Number(str(name));
+
+    const str = (name: string) =>
+      String(data.get(name) ?? "").trim();
+
+    const number = (name: string) => {
+      const value = str(name);
+      return value === "" ? null : Number(value);
+    };
+
+    setSaving(true);
+
     try {
       await onSave({
         id: crypto.randomUUID(),
@@ -36,21 +66,25 @@ export default function ReportForm({
         date: str("date"),
         zone: str("zone"),
         fertilizer: str("fertilizer"),
-        crop: str("crop"),
+        crop: CROP,
         bulbColor: str("bulbColor"),
         leafColor: str("leafColor"),
         leafCount: number("leafCount"),
         diameterCm: number("diameterCm"),
         health: str("health") as PlantHealth,
-        confidence: diagnosis?.confidence || 0,
-        observations: str("observations").split("\n").filter(Boolean),
-        recommendations: diagnosis?.recommendations || [],
-        limitations: diagnosis?.limitations || [
+        confidence: diagnosis?.confidence ?? 0,
+        observations: str("observations")
+          .split("\n")
+          .map((line) => line.trim())
+          .filter(Boolean),
+        recommendations: diagnosis?.recommendations ?? [],
+        limitations: diagnosis?.limitations ?? [
           "Registro manual; observación de campo sin validación de IA.",
         ],
         image: photo,
         source,
       });
+
       onClose();
     } catch {
       notify(
@@ -61,11 +95,14 @@ export default function ReportForm({
       setSaving(false);
     }
   }
+
   return (
     <Modal
       title={diagnosis ? "Registrar diagnóstico" : "Nuevo registro de campo"}
       wide
-      onClose={onClose}
+      onClose={() => {
+        if (!busy) onClose();
+      }}
     >
       <form onSubmit={submit}>
         <p className="modal-subtitle">
@@ -73,98 +110,116 @@ export default function ReportForm({
           {source === "demo" &&
             "Este registro conservará la etiqueta de demostración."}
         </p>
+
         <div className="form-grid">
           <label>
             Colaborador
             <input
               name="collaborator"
               required
+              disabled={busy}
               maxLength={80}
               placeholder="Nombre y apellido"
             />
           </label>
+
           <label>
             Fecha
             <input
               name="date"
               type="date"
               required
-              defaultValue={new Date().toLocaleDateString("en-CA")}
+              disabled={busy}
+              defaultValue={defaultDate}
             />
           </label>
+
           <label>
             Lote o zona
             <input
               name="zone"
               required
+              disabled={busy}
               maxLength={80}
               placeholder="Ej. Lote A"
               list="zones"
             />
             <datalist id="zones">
-              <option>Lote A</option>
-              <option>Lote B</option>
-              <option>Lote C</option>
+              <option value="Lote A" />
+              <option value="Lote B" />
+              <option value="Lote C" />
             </datalist>
           </label>
+
           <label>
             Fertilizante o abono
             <input
               name="fertilizer"
               required
+              disabled={busy}
               maxLength={100}
               placeholder="Ej. Humus de lombriz"
               list="fertilizers"
             />
             <datalist id="fertilizers">
-              <option>Humus de lombriz</option>
-              <option>Compost orgánico</option>
-              <option>NPK 20-20-20</option>
-              <option>Sin fertilizante</option>
+              <option value="Humus de lombriz" />
+              <option value="Compost orgánico" />
+              <option value="NPK 20-20-20" />
+              <option value="Sin fertilizante" />
             </datalist>
           </label>
+
           <label>
             Cultivo
             <input
               name="crop"
-              required
-              defaultValue={diagnosis?.crop || "Rábano"}
-              maxLength={100}
+              type="text"
+              value={CROP}
+              readOnly
+              aria-readonly="true"
             />
           </label>
+
           <label>
             Estado
             <select
               name="health"
-              defaultValue={diagnosis?.health || "Indeterminado"}
+              disabled={busy}
+              defaultValue={diagnosis?.health ?? "Indeterminado"}
             >
-              <option>Sano</option>
-              <option>Enfermo</option>
-              <option>Indeterminado</option>
+              <option value="Sano">Sano</option>
+              <option value="Enfermo">Enfermo</option>
+              <option value="Indeterminado">Indeterminado</option>
             </select>
           </label>
+
           <label>
             Color del bulbo
             <input
               name="bulbColor"
+              disabled={busy}
               maxLength={100}
-              defaultValue={diagnosis?.bulbColor || ""}
+              defaultValue={diagnosis?.bulbColor ?? ""}
               placeholder="No visible, si corresponde"
             />
           </label>
+
           <label>
             Color de hojas
             <input
               name="leafColor"
+              disabled={busy}
               maxLength={100}
-              defaultValue={diagnosis?.leafColor || ""}
+              defaultValue={diagnosis?.leafColor ?? ""}
             />
           </label>
+
           <label>
             Número de hojas
             <input
               name="leafCount"
               type="number"
+              disabled={busy}
               min="0"
               max="10000"
               step="1"
@@ -172,11 +227,13 @@ export default function ReportForm({
               placeholder="Sin estimar"
             />
           </label>
+
           <label>
             Diámetro aproximado (cm)
             <input
               name="diameterCm"
               type="number"
+              disabled={busy}
               min="0.01"
               max="1000"
               step="0.01"
@@ -184,56 +241,88 @@ export default function ReportForm({
               placeholder="Solo con referencia métrica"
             />
           </label>
+
           <label className="span-2">
             Observaciones
             <textarea
               name="observations"
               required
+              disabled={busy}
               maxLength={5000}
               rows={3}
-              defaultValue={diagnosis?.observations.join("\n") || ""}
+              defaultValue={diagnosis?.observations.join("\n") ?? ""}
               placeholder="Describe el desarrollo, signos visibles y condiciones de la muestra."
             />
           </label>
         </div>
+
         <label className="attachment">
           <Upload size={19} />
           <span>
-            {photo
-              ? "Fotografía adjunta · Cambiar imagen"
-              : "Adjuntar fotografía (opcional)"}
+            {loadingPhoto
+              ? "Cargando fotografía…"
+              : photo
+                ? "Fotografía adjunta · Cambiar imagen"
+                : "Adjuntar fotografía (opcional)"}
           </span>
           <input
             type="file"
             accept="image/png,image/jpeg,image/webp"
+            disabled={busy}
             onChange={async (e) => {
-              if (e.target.files?.[0])
-                try {
-                  setPhoto(await readImage(e.target.files[0]));
-                } catch (err) {
-                  notify((err as Error).message, true);
-                }
+              const input = e.currentTarget;
+              const file = input.files?.[0];
+              input.value = "";
+
+              if (!file || busy) return;
+
+              setLoadingPhoto(true);
+
+              try {
+                setPhoto(await readImage(file));
+              } catch (error) {
+                notify(
+                  error instanceof Error
+                    ? error.message
+                    : "No se pudo cargar la fotografía.",
+                  true,
+                );
+              } finally {
+                setLoadingPhoto(false);
+              }
             }}
           />
         </label>
+
         {photo && (
           <img
             className="form-photo"
             src={photo}
-            alt="Imagen adjunta al reporte"
+            alt="Imagen adjunta al reporte de rabanito"
           />
         )}
+
         <div className="modal-actions">
           <button
             type="button"
             className="button secondary"
-            disabled={saving}
+            disabled={busy}
             onClick={onClose}
           >
             Cancelar
           </button>
-          <button className="button primary" disabled={saving}>
-            {saving ? <Loading /> : <Save size={17} />}Guardar registro
+
+          <button
+            type="submit"
+            className="button primary"
+            disabled={busy}
+          >
+            {busy ? <Loading /> : <Save size={17} />}{" "}
+            {saving
+              ? "Guardando…"
+              : loadingPhoto
+                ? "Cargando fotografía…"
+                : "Guardar registro"}
           </button>
         </div>
       </form>
