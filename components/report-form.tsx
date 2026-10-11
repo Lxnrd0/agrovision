@@ -66,6 +66,7 @@ export default function ReportForm({
   const [today] = useState(localDate);
   const [photo, setPhoto] = useState(image);
   const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState("");
   const [loadingPhoto, setLoadingPhoto] = useState(false);
 
   const [selectedId, setSelectedId] = useState("");
@@ -136,6 +137,8 @@ export default function ReportForm({
 
     if (busy) return;
 
+    setFormError("");
+
     const data = new FormData(event.currentTarget);
 
     function text(name: string) {
@@ -190,7 +193,6 @@ export default function ReportForm({
       let dose: string;
 
       if (selectedPlant) {
-        // Conserva exactamente la dosis de los registros anteriores.
         dose = selectedPlant.dose ?? "";
       } else if (isControl) {
         dose = "0 g/planta; sin aplicación";
@@ -233,7 +235,6 @@ export default function ReportForm({
         bulbColor: text("bulbColor") || "No observado",
         leafColor: text("leafColor") || "No observado",
 
-        // Solo las mediciones ingresadas en campo van aquí.
         heightCm: manualHeight,
         diameterCm: manualDiameter,
         leafCount: manualLeaves,
@@ -247,7 +248,6 @@ export default function ReportForm({
             manualLeaves === null ? "unknown" : "manual",
         },
 
-        // Las estimaciones se conservan por separado.
         estimatedDiameterCm: estimate?.diameterCm ?? null,
         estimatedLeafCount: estimate?.leafCount ?? null,
 
@@ -259,6 +259,7 @@ export default function ReportForm({
           .map((line) => line.trim())
           .filter(Boolean),
 
+        aiObservations: estimate?.observations ?? [],
         recommendations: estimate?.recommendations ?? [],
 
         limitations: estimate?.limitations ?? [
@@ -279,12 +280,13 @@ export default function ReportForm({
       await onSave(record);
       onClose();
     } catch (error) {
-      notify(
+      const message =
         error instanceof Error
           ? error.message
-          : "No se pudo guardar el registro.",
-        true,
-      );
+          : "No se pudo guardar el registro.";
+
+      setFormError(message);
+      notify(message, true);
     } finally {
       setSaving(false);
     }
@@ -326,7 +328,6 @@ export default function ReportForm({
                 }
               >
                 <option value="">Registrar una planta nueva</option>
-
                 {plants.map((plant) => (
                   <option key={plant.id} value={plant.id}>
                     {plant.plantId} · {plant.zone} ·{" "}
@@ -344,9 +345,7 @@ export default function ReportForm({
                 maxLength={80}
                 value={plantId}
                 readOnly={isExisting}
-                onChange={(event) =>
-                  setPlantId(event.target.value)
-                }
+                onChange={(event) => setPlantId(event.target.value)}
                 placeholder="Ej. R-001"
               />
               <small>
@@ -410,7 +409,6 @@ export default function ReportForm({
                 }
                 placeholder="Selecciona o escribe el abono"
               />
-
               <datalist id="tracking-fertilizers">
                 <option value="Humus de lombriz" />
                 <option value="Compost orgánico" />
@@ -653,7 +651,6 @@ export default function ReportForm({
 
           <label className="attachment">
             <Upload size={19} />
-
             <span>
               {loadingPhoto
                 ? "Cargando fotografía…"
@@ -663,7 +660,6 @@ export default function ReportForm({
                     ? "Fotografía adjunta · Cambiar"
                     : "Adjuntar fotografía (opcional)"}
             </span>
-
             <input
               type="file"
               accept="image/png,image/jpeg,image/webp"
@@ -777,6 +773,13 @@ export default function ReportForm({
             </details>
           )}
         </fieldset>
+
+        {formError && (
+          <div className="form-error" role="alert">
+            <strong>No se pudo guardar</strong>
+            <p>{formError}</p>
+          </div>
+        )}
 
         <div className="modal-actions">
           <button
