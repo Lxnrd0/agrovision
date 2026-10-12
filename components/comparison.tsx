@@ -194,48 +194,49 @@ export default function Comparison({
             a.dose.localeCompare(b.dose),
         );
 
-  // La gráfica usa exactamente los mismos promedios que la tabla.
-  // Solo se habilita con edad exacta, para no mezclar etapas del cultivo.
+  // Genera automáticamente grupos por edad. Nunca mezcla edades
+  // diferentes al calcular los promedios de las barras.
   const chartDefinition = metrics.find((item) => item.key === chartMetric)!;
-  const chartData = rows
-    .map((row) => {
-      const average =
-        chartMetric === "heightCm"
-          ? row.height
-          : chartMetric === "leafCount"
-            ? row.leaves
-            : row.diameter;
-      const sample =
-        chartMetric === "heightCm"
-          ? row.heightN
-          : chartMetric === "leafCount"
-            ? row.leavesN
-            : row.measured;
-      const deviation =
-        chartMetric === "heightCm"
-          ? row.heightSD
-          : chartMetric === "leafCount"
-            ? row.leavesSD
-            : row.diameterSD;
+  const availableAges = [...new Set(
+    observations
+      .map((record) => age(record))
+      .filter((days): days is number => days !== null),
+  )].sort((a, b) => a - b);
+
+  const chartGroups = availableAges.map((days) => {
+    const grouped = [...new Set(selected.map((record) => record.zone))]
+      .flatMap((lot) =>
+        compare(
+          selected.filter((record) => record.zone === lot),
+          { targetAge: days, origin: "manual" },
+        ).map((row) => ({ ...row, zone: lot })),
+      );
+
+    const items = grouped.map((row) => {
+      const average = chartMetric === "heightCm" ? row.height
+        : chartMetric === "leafCount" ? row.leaves : row.diameter;
+      const sample = chartMetric === "heightCm" ? row.heightN
+        : chartMetric === "leafCount" ? row.leavesN : row.measured;
+      const deviation = chartMetric === "heightCm" ? row.heightSD
+        : chartMetric === "leafCount" ? row.leavesSD : row.diameterSD;
       return {
-        key: row.tableKey,
+        key: JSON.stringify([row.zone, row.key, days]),
         label: `${row.name} · ${row.dose}`,
         lot: row.zone,
         average,
         sample,
         deviation,
       };
-    })
-    .filter(
-      (item) =>
-        item.average !== null &&
-        Number.isFinite(item.average) &&
-        item.sample > 0,
+    }).filter((item) =>
+      item.average !== null && Number.isFinite(item.average) && item.sample > 0,
     );
-  const chartMaximum = Math.max(
-    1,
-    ...chartData.map((item) => item.average ?? 0),
-  );
+
+    return {
+      days,
+      items,
+      maximum: Math.max(1, ...items.map((item) => item.average ?? 0)),
+    };
+  }).filter((group) => group.items.length > 0);
 
   const plants = [
     ...new Map(
@@ -518,7 +519,7 @@ export default function Comparison({
           <div>
             <h2>Gráfica comparativa por fertilizante</h2>
             <p>
-              Promedios de mediciones manuales, separados por lote,
+              Promedios automáticos de mediciones manuales, agrupados por edad, lote,
               tratamiento y dosis.
             </p>
           </div>
@@ -541,82 +542,90 @@ export default function Comparison({
 
         {invalidRange ? (
           <p role="alert">Corrige los filtros de edad para mostrar la gráfica.</p>
-        ) : targetAge === undefined ? (
+        ) : chartGroups.length === 0 ? (
           <p className="table-note">
-            Escribe una <strong>edad exacta (días)</strong> en los filtros
-            para comparar plantas en la misma etapa de cultivo.
-          </p>
-        ) : chartData.length === 0 ? (
-          <p className="table-note">
-            No hay mediciones manuales de {chartDefinition.label.toLowerCase()}
-            a los {targetAge} días con los filtros actuales.
+            Aún no hay mediciones manuales válidas de {chartDefinition.label.toLowerCase()}
+            para los filtros seleccionados. Registra observaciones en la bitácora.
           </p>
         ) : (
           <>
             <p className="table-note">
-              {chartDefinition.label} promedio a los {targetAge} días.
-              Cada barra representa un tratamiento y una dosis dentro
-              de su lote. La barra no incluye mediciones de IA.
+              Gráficas generadas automáticamente con las observaciones reales.
+              Cada grupo muestra plantas de la misma edad; se separan lote,
+              fertilizante y dosis. Los filtros de edad son opcionales.
             </p>
-            <div
-              role="img"
-              aria-label={`Comparación de ${chartDefinition.label.toLowerCase()} a los ${targetAge} días`}
-              style={{
-                display: "flex",
-                alignItems: "flex-end",
-                gap: 18,
-                minHeight: 285,
-                overflowX: "auto",
-                padding: "25px 12px 12px",
-                borderBottom: "1px solid var(--border)",
-              }}
-            >
-              {chartData.map((item) => (
+            {chartGroups.map((group) => (
+              <div key={group.days} style={{ marginTop: 24 }}>
+                <h3 style={{ marginBottom: 10 }}>
+                  {chartDefinition.label} promedio · día {group.days}
+                </h3>
                 <div
-                  key={item.key}
+                  role="img"
+                  aria-label={`Comparación de ${chartDefinition.label.toLowerCase()} a los ${group.days} días`}
                   style={{
-                    flex: "1 0 145px",
-                    maxWidth: 240,
-                    minWidth: 145,
                     display: "flex",
-                    flexDirection: "column",
-                    justifyContent: "flex-end",
-                    alignItems: "stretch",
-                    textAlign: "center",
-                    gap: 8,
+                    alignItems: "flex-end",
+                    gap: 18,
+                    minHeight: 285,
+                    overflowX: "auto",
+                    padding: "25px 12px 12px",
+                    borderBottom: "1px solid var(--border)",
                   }}
                 >
-                  <strong>
-                    {format(item.average, chartMetric === "leafCount" ? 1 : 2)}{" "}
-                    {chartDefinition.unit}
-                  </strong>
-                  <div
-                    title={`${item.lot}: ${item.label}. Promedio: ${format(item.average)} ${chartDefinition.unit}; n = ${item.sample}`}
-                    style={{
-                      height: `${Math.max(4, ((item.average ?? 0) / chartMaximum) * 190)}px`,
-                      background: "var(--green-text, #66b87a)",
-                      border: "1px solid var(--border)",
-                      borderRadius: "10px 10px 3px 3px",
-                      minHeight: 4,
-                    }}
-                  />
-                  <span style={{ fontWeight: 600, overflowWrap: "anywhere" }}>
-                    {item.label}
-                  </span>
-                  <small style={{ color: "var(--muted)" }}>
-                    {item.lot} · n = {item.sample}
-                    {item.deviation === null
-                      ? " · DE no disponible"
-                      : ` · DE ${format(item.deviation)}`}
-                  </small>
+                  {group.items.map((item) => (
+                    <div
+                      key={item.key}
+                      style={{
+                        flex: "1 0 145px",
+                        maxWidth: 240,
+                        minWidth: 145,
+                        display: "flex",
+                        flexDirection: "column",
+                        justifyContent: "flex-end",
+                        alignItems: "stretch",
+                        textAlign: "center",
+                        gap: 8,
+                      }}
+                    >
+                      <strong>
+                        {format(item.average, chartMetric === "leafCount" ? 1 : 2)}{" "}
+                        {chartDefinition.unit}
+                      </strong>
+                      <div
+                        title={`${item.lot}: ${item.label}. Promedio ${format(item.average)} ${chartDefinition.unit}; n = ${item.sample}`}
+                        style={{
+                          height: `${Math.max(4, ((item.average ?? 0) / group.maximum) * 190)}px`,
+                          background: "var(--green-text, #66b87a)",
+                          border: "1px solid var(--border)",
+                          borderRadius: "10px 10px 3px 3px",
+                          minHeight: 4,
+                        }}
+                      />
+                      <span style={{ fontWeight: 600, overflowWrap: "anywhere" }}>
+                        {item.label}
+                      </span>
+                      <small style={{ color: "var(--muted)" }}>
+                        {item.lot} · n = {item.sample}
+                        {item.deviation === null
+                          ? " · DE no disponible"
+                          : ` · DE ${format(item.deviation)}`}
+                      </small>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+                {group.items.length === 1 && (
+                  <p className="table-note">
+                    Solo hay un grupo con mediciones a esta edad: aún no se pueden
+                    contrastar diferentes tratamientos.
+                  </p>
+                )}
+              </div>
+            ))}
             <p className="table-note" style={{ marginTop: 12 }}>
               n es el número de plantas con medición manual válida.
               DE es la desviación estándar muestral (requiere n ≥ 2).
-              Con pocas plantas, las diferencias son descriptivas y
-              no demuestran por sí solas el efecto del fertilizante.
+              Las barras no incorporan estimaciones de IA. Las diferencias
+              descriptivas no demuestran por sí solas el efecto del fertilizante.
             </p>
           </>
         )}
