@@ -123,6 +123,7 @@ export default function Comparison({
   const [maxAge, setMaxAge] = useState("");
   const [exactAge, setExactAge] = useState("");
   const [selectedPlant, setSelectedPlant] = useState("");
+  const [chartMetric, setChartMetric] = useState<Metric>("heightCm");
 
   const real = records.filter((record) => record.source !== "demo");
 
@@ -192,6 +193,49 @@ export default function Comparison({
             a.name.localeCompare(b.name) ||
             a.dose.localeCompare(b.dose),
         );
+
+  // La gráfica usa exactamente los mismos promedios que la tabla.
+  // Solo se habilita con edad exacta, para no mezclar etapas del cultivo.
+  const chartDefinition = metrics.find((item) => item.key === chartMetric)!;
+  const chartData = rows
+    .map((row) => {
+      const average =
+        chartMetric === "heightCm"
+          ? row.height
+          : chartMetric === "leafCount"
+            ? row.leaves
+            : row.diameter;
+      const sample =
+        chartMetric === "heightCm"
+          ? row.heightN
+          : chartMetric === "leafCount"
+            ? row.leavesN
+            : row.measured;
+      const deviation =
+        chartMetric === "heightCm"
+          ? row.heightSD
+          : chartMetric === "leafCount"
+            ? row.leavesSD
+            : row.diameterSD;
+      return {
+        key: row.tableKey,
+        label: `${row.name} · ${row.dose}`,
+        lot: row.zone,
+        average,
+        sample,
+        deviation,
+      };
+    })
+    .filter(
+      (item) =>
+        item.average !== null &&
+        Number.isFinite(item.average) &&
+        item.sample > 0,
+    );
+  const chartMaximum = Math.max(
+    1,
+    ...chartData.map((item) => item.average ?? 0),
+  );
 
   const plants = [
     ...new Map(
@@ -467,6 +511,115 @@ export default function Comparison({
             </p>
           )}
         </div>
+      </div>
+
+      <div className="panel" style={{ marginTop: 20 }}>
+        <div className="section-heading">
+          <div>
+            <h2>Gráfica comparativa por fertilizante</h2>
+            <p>
+              Promedios de mediciones manuales, separados por lote,
+              tratamiento y dosis.
+            </p>
+          </div>
+          <label style={{ minWidth: 190 }}>
+            Variable para comparar
+            <select
+              value={chartMetric}
+              onChange={(event) =>
+                setChartMetric(event.target.value as Metric)
+              }
+            >
+              {metrics.map((item) => (
+                <option key={item.key} value={item.key}>
+                  {item.label} ({item.unit})
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        {invalidRange ? (
+          <p role="alert">Corrige los filtros de edad para mostrar la gráfica.</p>
+        ) : targetAge === undefined ? (
+          <p className="table-note">
+            Escribe una <strong>edad exacta (días)</strong> en los filtros
+            para comparar plantas en la misma etapa de cultivo.
+          </p>
+        ) : chartData.length === 0 ? (
+          <p className="table-note">
+            No hay mediciones manuales de {chartDefinition.label.toLowerCase()}
+            a los {targetAge} días con los filtros actuales.
+          </p>
+        ) : (
+          <>
+            <p className="table-note">
+              {chartDefinition.label} promedio a los {targetAge} días.
+              Cada barra representa un tratamiento y una dosis dentro
+              de su lote. La barra no incluye mediciones de IA.
+            </p>
+            <div
+              role="img"
+              aria-label={`Comparación de ${chartDefinition.label.toLowerCase()} a los ${targetAge} días`}
+              style={{
+                display: "flex",
+                alignItems: "flex-end",
+                gap: 18,
+                minHeight: 285,
+                overflowX: "auto",
+                padding: "25px 12px 12px",
+                borderBottom: "1px solid var(--border)",
+              }}
+            >
+              {chartData.map((item) => (
+                <div
+                  key={item.key}
+                  style={{
+                    flex: "1 0 145px",
+                    maxWidth: 240,
+                    minWidth: 145,
+                    display: "flex",
+                    flexDirection: "column",
+                    justifyContent: "flex-end",
+                    alignItems: "stretch",
+                    textAlign: "center",
+                    gap: 8,
+                  }}
+                >
+                  <strong>
+                    {format(item.average, chartMetric === "leafCount" ? 1 : 2)}{" "}
+                    {chartDefinition.unit}
+                  </strong>
+                  <div
+                    title={`${item.lot}: ${item.label}. Promedio: ${format(item.average)} ${chartDefinition.unit}; n = ${item.sample}`}
+                    style={{
+                      height: `${Math.max(4, ((item.average ?? 0) / chartMaximum) * 190)}px`,
+                      background: "var(--green-text, #66b87a)",
+                      border: "1px solid var(--border)",
+                      borderRadius: "10px 10px 3px 3px",
+                      minHeight: 4,
+                    }}
+                  />
+                  <span style={{ fontWeight: 600, overflowWrap: "anywhere" }}>
+                    {item.label}
+                  </span>
+                  <small style={{ color: "var(--muted)" }}>
+                    {item.lot} · n = {item.sample}
+                    {item.deviation === null
+                      ? " · DE no disponible"
+                      : ` · DE ${format(item.deviation)}`}
+                  </small>
+                </div>
+              ))}
+            </div>
+            <p className="table-note" style={{ marginTop: 12 }}>
+              n es el número de plantas con medición manual válida.
+              DE es la desviación estándar muestral (requiere n ≥ 2).
+              Con pocas plantas, las diferencias son descriptivas y
+              no demuestran por sí solas el efecto del fertilizante.
+            </p>
+          </>
+        )}
       </div>
 
       <div className="section-heading" style={{ marginTop: 28 }}>
