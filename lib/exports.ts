@@ -336,15 +336,15 @@ export async function exportPdf(records: FieldRecord[]) {
     if (y + height > pageHeight - 18) newPage(title);
   }
 
-  function section(title: string, pageTitle: string) {
-    ensureSpace(15, pageTitle);
+  function section(title: string, pageTitle: string, requiredSpace = 20) {
+    ensureSpace(requiredSpace, pageTitle);
     doc.setTextColor(...green);
     doc.setFontSize(12);
     doc.setFont("helvetica", "bold");
     doc.text(title, left, y);
     doc.setFont("helvetica", "normal");
     doc.setTextColor(35, 45, 39);
-    y += 6;
+    y += 4.5;
   }
 
   function table(head: string[], body: string[][], title: string, widths?: Record<number, { cellWidth: number }>) {
@@ -353,7 +353,9 @@ export async function exportPdf(records: FieldRecord[]) {
       head: [head],
       body,
       theme: "striped",
-      styles: { fontSize: 8, cellPadding: 2.5, overflow: "linebreak" },
+      styles: { fontSize: 7.6, cellPadding: 1.7, overflow: "linebreak" },
+      rowPageBreak: "avoid",
+      pageBreak: body.length <= 10 ? "avoid" : "auto",
       headStyles: { fillColor: green },
       columnStyles: widths,
       margin: { left, right: 15, top: 40, bottom: 18 },
@@ -367,7 +369,7 @@ export async function exportPdf(records: FieldRecord[]) {
       },
     });
     const finalY = (doc as typeof doc & { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY;
-    y = (finalY ?? y + 20) + 9;
+    y = (finalY ?? y + 20) + 5;
   }
 
   function manual(record: FieldRecord, metric: Metric): number | null {
@@ -388,7 +390,7 @@ export async function exportPdf(records: FieldRecord[]) {
       .filter((point): point is { date: string; days: number; height: number } =>
         point.days !== null && point.height !== null,
       );
-    section("Evolución de la altura (mediciones manuales)", title);
+    section("Evolución de la altura (mediciones manuales)", title, points.length > 1 ? 77 : 22);
     if (points.length === 0) {
       doc.setFontSize(9);
       doc.text("Aún no se han registrado medidas manuales de altura.", left, y + 3);
@@ -401,7 +403,6 @@ export async function exportPdf(records: FieldRecord[]) {
       y += 14;
       return;
     }
-    ensureSpace(70, title);
     const x0 = left + 13;
     const x1 = right - 8;
     const y0 = y + 51;
@@ -439,9 +440,9 @@ export async function exportPdf(records: FieldRecord[]) {
   header("Informe de seguimiento del cultivo de rabanito");
   doc.setFontSize(10);
   doc.text(`Generado: ${new Date().toLocaleString("es-PE")}`, left, y);
-  y += 8;
+  y += 6;
   doc.text(`${groups.size} planta(s) · ${real.length} observación(es) reales`, left, y);
-  y += 13;
+  y += 9;
 
   if (real.length === 0) {
     doc.setFontSize(10);
@@ -453,7 +454,7 @@ export async function exportPdf(records: FieldRecord[]) {
     if (groupIndex++ > 0) newPage(`Seguimiento individual · ${plantId}`);
     const latest = rows[rows.length - 1];
     const pageTitle = `Seguimiento individual · ${plantId}`;
-    section(`Planta ${plantId}`, pageTitle);
+    section(`Planta ${plantId}`, pageTitle, 82);
     const detail: string[][] = [
       ["Cultivo", latest.crop || "Rabanito"],
       ["Responsable", latest.collaborator || "No registrado"],
@@ -467,7 +468,7 @@ export async function exportPdf(records: FieldRecord[]) {
     ];
     table(["Información general", "Detalle"], detail, pageTitle, { 0: { cellWidth: 64 } });
 
-    section("Últimas mediciones manuales disponibles", pageTitle);
+    section("Últimas mediciones manuales disponibles", pageTitle, 34);
     const measurements = metrics.map((metric) => {
       const result = latestManual(rows, metric.key);
       return [metric.label, result ? `${format(result.measured, metric.key === "leafCount" ? 0 : 2)} ${metric.unit}` : "No medido", result?.date ?? "—"];
@@ -475,7 +476,7 @@ export async function exportPdf(records: FieldRecord[]) {
     table(["Variable", "Valor", "Fecha de medición"], measurements, pageTitle);
 
     chart(rows, pageTitle);
-    section("Historial de observaciones", pageTitle);
+    section("Historial de observaciones", pageTitle, 23);
     const history = rows.map((record) => [
       record.date,
       age(record) === null ? "—" : String(age(record)),
@@ -485,7 +486,7 @@ export async function exportPdf(records: FieldRecord[]) {
     ]);
     table(["Fecha", "Día", "Altura (cm)", "Hojas", "Diámetro (cm)"], history, pageTitle);
 
-    section("Cambios entre medidas comparables", pageTitle);
+    section("Cambios entre medidas comparables", pageTitle, 34);
     const changes = metrics.map((metric) => {
       const last = [...rows].reverse().find((record) => manual(record, metric.key) !== null);
       return [metric.label, last ? growthText(last, rows, metric.key, metric.unit) : "Sin medidas comparables"];
@@ -494,12 +495,12 @@ export async function exportPdf(records: FieldRecord[]) {
 
     const notes = rows.flatMap((record) => record.observations.map((note) => [record.date, note]));
     if (notes.length) {
-      section("Observaciones de campo", pageTitle);
+      section("Observaciones de campo", pageTitle, 24);
       table(["Fecha", "Nota registrada"], notes, pageTitle, { 0: { cellWidth: 32 } });
     }
     const photos = rows.filter((record) => record.image);
     if (photos.length) {
-      section("Fotografías", pageTitle);
+      section("Fotografías", pageTitle, 21);
       doc.setFontSize(9);
       doc.text(`${photos.length} observación(es) con fotografía. Las imágenes se conservan en el respaldo JSON.`, left, y + 2);
       y += 10;
