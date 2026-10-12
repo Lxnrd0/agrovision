@@ -114,6 +114,60 @@ function download(url: string, name: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+/** CSV sencillo para compartir las mediciones manuales del rabanito. */
+export function exportSimpleCsv(records: FieldRecord[]) {
+  const header = [
+    "ID del registro",
+    "Código de planta",
+    "Responsable",
+    "Fecha de siembra",
+    "Fecha de observación",
+    "Edad (días)",
+    "Lote",
+    "Fertilizante",
+    "Dosis",
+    "Altura (cm)",
+    "Número de hojas",
+    "Diámetro (cm)",
+    "Observaciones",
+    "Tiene fotografía",
+  ];
+
+  const manualValue = (record: FieldRecord, metric: Metric) =>
+    origin(record, metric) === "manual" ? value(record, metric) : null;
+
+  const rows = sortedRecords(records)
+    .filter((record) => record.source !== "demo")
+    .map((record) => [
+      record.id,
+      record.plantId ?? "",
+      record.collaborator,
+      record.sowingDate ?? "",
+      record.date,
+      age(record),
+      record.zone,
+      record.fertilizer,
+      record.dose ?? "",
+      manualValue(record, "heightCm"),
+      manualValue(record, "leafCount"),
+      manualValue(record, "diameterCm"),
+      record.observations.join(" | "),
+      record.image ? "Sí" : "No",
+    ]);
+
+  const content =
+    "\uFEFF" +
+    [header, ...rows]
+      .map((row) => row.map(csvCell).join(","))
+      .join("\r\n");
+
+  const blob = new Blob([content], {
+    type: "text/csv;charset=utf-8",
+  });
+
+  download(URL.createObjectURL(blob), "AgroVision_monitoreo.csv");
+}
+
 export function exportCsv(records: FieldRecord[]) {
   const header = [
     "ID del registro",
