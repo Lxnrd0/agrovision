@@ -38,7 +38,7 @@ import {
   mutateRecords,
 } from "@/lib/storage";
 import { summary } from "@/lib/metrics";
-import { exportCsv, exportPdf } from "@/lib/exports";
+import { exportSimpleCsv, exportPdf } from "@/lib/exports";
 import { validateRecord } from "@/lib/tracking";
 
 import AnalysisPanel from "./analysis-panel";
@@ -443,7 +443,7 @@ export default function Dashboard() {
       }
 
       if (format === "csv") {
-        exportCsv(records);
+        exportSimpleCsv(records);
       } else {
         await exportPdf(records);
       }
@@ -646,7 +646,7 @@ export default function Dashboard() {
                       onClick={() => void download("csv")}
                     >
                       <FileSpreadsheet size={17} />
-                      Historial en CSV
+                      Monitoreo en CSV
                     </button>
                     <button
                       type="button"
