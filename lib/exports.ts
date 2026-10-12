@@ -295,215 +295,230 @@ export async function exportPdf(records: FieldRecord[]) {
     import("jspdf-autotable"),
   ]);
 
-  const doc = new jsPDF();
-  const ordered = sortedRecords(records);
+  const doc = new jsPDF({ unit: "mm", format: "a4" });
+  const real = sortedRecords(records).filter((record) => record.source !== "demo");
+  const groups = new Map<string, FieldRecord[]>();
+  for (const record of real) {
+    const key = record.plantId?.trim() || `Sin código (${record.id})`;
+    const group = groups.get(key) ?? [];
+    group.push(record);
+    groups.set(key, group);
+  }
 
-  const realCount = records.filter(
-    (record) => record.source !== "demo",
-  ).length;
+  const green: [number, number, number] = [35, 78, 49];
+  const dark: [number, number, number] = [19, 31, 25];
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const left = 15;
+  const right = pageWidth - 15;
+  const usable = right - left;
+  let y = 0;
 
-  const exampleCount = records.length - realCount;
+  function header(title: string) {
+    doc.setFillColor(...dark);
+    doc.rect(0, 0, pageWidth, 32, "F");
+    doc.setTextColor(166, 231, 124);
+    doc.setFontSize(21);
+    doc.text("AgroVision", left, 15);
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(9);
+    doc.text(title, left, 24);
+    doc.setTextColor(35, 45, 39);
+    y = 42;
+  }
 
-  doc.setFillColor(19, 31, 25);
-  doc.rect(0, 0, 210, 36, "F");
-
-  doc.setTextColor(166, 231, 124);
-  doc.setFontSize(23);
-  doc.text("AgroVision", 14, 18);
-
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(10);
-  doc.text("Seguimiento de plantas de rabanito", 14, 27);
-
-  doc.setTextColor(40);
-  doc.setFontSize(9);
-
-  doc.text(
-    `Exportado: ${new Date().toLocaleString("es-PE")}`,
-    14,
-    46,
-  );
-
-  doc.text(
-    `${realCount} registros reales · ${exampleCount} ejemplos`,
-    14,
-    52,
-  );
-
-  autoTable(doc, {
-    startY: 59,
-    head: [
-      [
-        "Planta",
-        "Observación",
-        "Edad",
-        "Lote",
-        "Tratamiento",
-        "Tipo",
-      ],
-    ],
-    body: ordered.map((record) => [
-      record.plantId || "Sin identificar",
-      record.date,
-      age(record) === null ? "N/D" : `${age(record)} d`,
-      record.zone,
-      record.fertilizer,
-      record.source === "demo" ? "EJEMPLO" : "Real",
-    ]),
-    styles: {
-      fontSize: 8,
-      cellPadding: 3,
-      overflow: "linebreak",
-    },
-    headStyles: {
-      fillColor: [35, 78, 49],
-    },
-    margin: {
-      left: 14,
-      right: 14,
-      bottom: 18,
-    },
-  });
-
-  for (const record of ordered) {
+  function newPage(title: string) {
     doc.addPage();
+    header(title);
+  }
 
-    doc.setTextColor(40);
-    doc.setFontSize(16);
-    doc.text("Ficha de observación", 14, 20);
+  function ensureSpace(height: number, title: string) {
+    if (y + height > pageHeight - 18) newPage(title);
+  }
 
-    const plantAge = age(record);
+  function section(title: string, pageTitle: string) {
+    ensureSpace(15, pageTitle);
+    doc.setTextColor(...green);
+    doc.setFontSize(12);
+    doc.setFont("helvetica", "bold");
+    doc.text(title, left, y);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(35, 45, 39);
+    y += 6;
+  }
 
-    const hasAnalysis =
-      record.source === "gemini" ||
-      record.source === "openai" ||
-      record.source === "demo";
-
-    const body: string[][] = [
-      ["ID del registro", record.id],
-      ["Planta", record.plantId || "Sin identificar"],
-      ["Cultivo", record.crop],
-      ["Fecha de siembra", record.sowingDate || "No registrada"],
-      ["Fecha de observación", record.date],
-      [
-        "Edad",
-        plantAge === null ? "No disponible" : `${plantAge} días`,
-      ],
-      ["Responsable", record.collaborator],
-      ["Lote", record.zone],
-      ["Tratamiento", record.fertilizer],
-      ["Dosis / frecuencia", record.dose || "No registrada"],
-      ["Origen del registro", sourceLabel(record.source)],
-      ["Estado observado", record.health],
-      ["Color del bulbo", record.bulbColor || "No observado"],
-      ["Color de las hojas", record.leafColor || "No observado"],
-    ];
-
-    for (const metric of metrics) {
-      body.push([
-        metric.label,
-        measurementText(record, metric),
-      ]);
-    }
-
-    body.push(
-      [
-        "Diámetro estimado IA",
-        record.estimatedDiameterCm == null
-          ? "Sin estimar"
-          : `${format(record.estimatedDiameterCm)} cm`,
-      ],
-      [
-        "Hojas estimadas IA",
-        record.estimatedLeafCount == null
-          ? "Sin estimar"
-          : format(record.estimatedLeafCount, 0),
-      ],
-      [
-        "Confianza del modelo",
-        hasAnalysis
-          ? `${format(record.confidence, 1)} %. No equivale a precisión comprobada.`
-          : "No aplica",
-      ],
-    );
-
-    for (const metric of metrics) {
-      body.push([
-        `Cambio de ${metric.label.toLowerCase()}`,
-        growthText(record, records, metric.key, metric.unit),
-      ]);
-    }
-
-    body.push(
-      [
-        "Síntomas / observaciones",
-        record.observations.join("\n") ||
-          "Sin observaciones escritas",
-      ],
-      [
-        "Observaciones originales IA",
-        (record.aiObservations ?? []).join("\n") ||
-          "Sin observaciones originales guardadas",
-      ],
-      [
-        "Recomendaciones IA",
-        record.recommendations.join("\n") ||
-          "Sin recomendaciones",
-      ],
-      [
-        "Limitaciones",
-        record.limitations.join("\n") ||
-          "Sin limitaciones registradas",
-      ],
-      [
-        "Fotografía",
-        record.image
-          ? "Adjunta en la aplicación; no incluida en este PDF."
-          : "Sin fotografía",
-      ],
-      [
-        "Criterio de crecimiento",
-        "Cambio respecto a la medida válida anterior de la misma planta, tratamiento y origen, entre los registros exportados.",
-      ],
-    );
-
+  function table(head: string[], body: string[][], title: string, widths?: Record<number, { cellWidth: number }>) {
     autoTable(doc, {
-      startY: 29,
-      theme: "striped",
+      startY: y,
+      head: [head],
       body,
-      styles: {
-        fontSize: 9,
-        cellPadding: 3,
-        overflow: "linebreak",
-      },
-      columnStyles: {
-        0: {
-          cellWidth: 48,
-          fontStyle: "bold",
-        },
-      },
-      margin: {
-        left: 14,
-        right: 14,
-        top: 18,
-        bottom: 18,
+      theme: "striped",
+      styles: { fontSize: 8, cellPadding: 2.5, overflow: "linebreak" },
+      headStyles: { fillColor: green },
+      columnStyles: widths,
+      margin: { left, right: 15, top: 40, bottom: 18 },
+      didDrawPage: (data) => {
+        if (data.pageNumber > 1) {
+          // Continuaciones de tablas largas mantienen el encabezado de informe.
+          doc.setTextColor(...green);
+          doc.setFontSize(9);
+          doc.text(`AgroVision · ${title}`, left, 12);
+        }
       },
     });
+    const finalY = (doc as typeof doc & { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY;
+    y = (finalY ?? y + 20) + 9;
   }
 
-  const pageCount = doc.getNumberOfPages();
+  function manual(record: FieldRecord, metric: Metric): number | null {
+    return origin(record, metric) === "manual" ? value(record, metric) : null;
+  }
 
-  for (let page = 1; page <= pageCount; page++) {
-    doc.setPage(page);
-    doc.setTextColor(110);
+  function latestManual(rows: FieldRecord[], metric: Metric) {
+    for (let i = rows.length - 1; i >= 0; i--) {
+      const measured = manual(rows[i], metric);
+      if (measured !== null) return { date: rows[i].date, measured };
+    }
+    return null;
+  }
+
+  function chart(rows: FieldRecord[], title: string) {
+    const points = rows
+      .map((record) => ({ date: record.date, days: age(record), height: manual(record, "heightCm") }))
+      .filter((point): point is { date: string; days: number; height: number } =>
+        point.days !== null && point.height !== null,
+      );
+    section("Evolución de la altura (mediciones manuales)", title);
+    if (points.length === 0) {
+      doc.setFontSize(9);
+      doc.text("Aún no se han registrado medidas manuales de altura.", left, y + 3);
+      y += 14;
+      return;
+    }
+    if (points.length === 1) {
+      doc.setFontSize(9);
+      doc.text(`Día ${points[0].days}: ${format(points[0].height)} cm. Se necesita otra medición para trazar la evolución.`, left, y + 3);
+      y += 14;
+      return;
+    }
+    ensureSpace(70, title);
+    const x0 = left + 13;
+    const x1 = right - 8;
+    const y0 = y + 51;
+    const y1 = y + 7;
+    const minDay = Math.min(...points.map((p) => p.days));
+    const maxDay = Math.max(...points.map((p) => p.days));
+    const maxHeight = Math.max(1, ...points.map((p) => p.height));
+    const scaleX = (day: number) => x0 + ((day - minDay) / Math.max(1, maxDay - minDay)) * (x1 - x0);
+    const scaleY = (height: number) => y0 - (height / maxHeight) * (y0 - y1);
+    doc.setDrawColor(200, 210, 201);
+    doc.setLineWidth(0.25);
+    for (let i = 0; i <= 4; i++) {
+      const yy = y0 - (i / 4) * (y0 - y1);
+      doc.line(x0, yy, x1, yy);
+      doc.setFontSize(7);
+      doc.setTextColor(100, 110, 102);
+      doc.text(format((i / 4) * maxHeight, 1), x0 - 2, yy + 1, { align: "right" });
+    }
+    doc.setDrawColor(...green);
+    doc.setLineWidth(0.7);
+    for (let i = 1; i < points.length; i++) {
+      doc.line(scaleX(points[i - 1].days), scaleY(points[i - 1].height), scaleX(points[i].days), scaleY(points[i].height));
+    }
+    for (const point of points) {
+      doc.setFillColor(...green);
+      doc.circle(scaleX(point.days), scaleY(point.height), 1.4, "F");
+    }
     doc.setFontSize(8);
-
-    doc.text(
-      `AgroVision · Página ${page} de ${pageCount}`,
-      14,
-      doc.internal.pageSize.getHeight() - 9,
-    );
+    doc.setTextColor(80, 90, 83);
+    doc.text(`Día ${minDay}`, x0, y0 + 5);
+    doc.text(`Día ${maxDay}`, x1, y0 + 5, { align: "right" });
+    y += 66;
   }
 
+  header("Informe de seguimiento del cultivo de rabanito");
+  doc.setFontSize(10);
+  doc.text(`Generado: ${new Date().toLocaleString("es-PE")}`, left, y);
+  y += 8;
+  doc.text(`${groups.size} planta(s) · ${real.length} observación(es) reales`, left, y);
+  y += 13;
+
+  if (real.length === 0) {
+    doc.setFontSize(10);
+    doc.text("No hay observaciones reales para incluir en el informe.", left, y);
+  }
+
+  let groupIndex = 0;
+  for (const [plantId, rows] of groups) {
+    if (groupIndex++ > 0) newPage(`Seguimiento individual · ${plantId}`);
+    const latest = rows[rows.length - 1];
+    const pageTitle = `Seguimiento individual · ${plantId}`;
+    section(`Planta ${plantId}`, pageTitle);
+    const detail: string[][] = [
+      ["Cultivo", latest.crop || "Rabanito"],
+      ["Responsable", latest.collaborator || "No registrado"],
+      ["Lote", latest.zone || "No registrado"],
+      ["Fecha de siembra", latest.sowingDate || "No registrada"],
+      ["Última observación", latest.date],
+      ["Edad en la última observación", age(latest) === null ? "No disponible" : `${age(latest)} días`],
+      ["Fertilizante / tratamiento", latest.fertilizer || "No registrado"],
+      ["Dosis y frecuencia", latest.dose || "No registrada"],
+      ["Observaciones registradas", String(rows.length)],
+    ];
+    table(["Información general", "Detalle"], detail, pageTitle, { 0: { cellWidth: 64 } });
+
+    section("Últimas mediciones manuales disponibles", pageTitle);
+    const measurements = metrics.map((metric) => {
+      const result = latestManual(rows, metric.key);
+      return [metric.label, result ? `${format(result.measured, metric.key === "leafCount" ? 0 : 2)} ${metric.unit}` : "No medido", result?.date ?? "—"];
+    });
+    table(["Variable", "Valor", "Fecha de medición"], measurements, pageTitle);
+
+    chart(rows, pageTitle);
+    section("Historial de observaciones", pageTitle);
+    const history = rows.map((record) => [
+      record.date,
+      age(record) === null ? "—" : String(age(record)),
+      manual(record, "heightCm") === null ? "—" : format(manual(record, "heightCm")),
+      manual(record, "leafCount") === null ? "—" : format(manual(record, "leafCount"), 0),
+      manual(record, "diameterCm") === null ? "—" : format(manual(record, "diameterCm")),
+    ]);
+    table(["Fecha", "Día", "Altura (cm)", "Hojas", "Diámetro (cm)"], history, pageTitle);
+
+    section("Cambios entre medidas comparables", pageTitle);
+    const changes = metrics.map((metric) => {
+      const last = [...rows].reverse().find((record) => manual(record, metric.key) !== null);
+      return [metric.label, last ? growthText(last, rows, metric.key, metric.unit) : "Sin medidas comparables"];
+    });
+    table(["Variable", "Crecimiento registrado"], changes, pageTitle, { 0: { cellWidth: 37 } });
+
+    const notes = rows.flatMap((record) => record.observations.map((note) => [record.date, note]));
+    if (notes.length) {
+      section("Observaciones de campo", pageTitle);
+      table(["Fecha", "Nota registrada"], notes, pageTitle, { 0: { cellWidth: 32 } });
+    }
+    const photos = rows.filter((record) => record.image);
+    if (photos.length) {
+      section("Fotografías", pageTitle);
+      doc.setFontSize(9);
+      doc.text(`${photos.length} observación(es) con fotografía. Las imágenes se conservan en el respaldo JSON.`, left, y + 2);
+      y += 10;
+    }
+    ensureSpace(16, pageTitle);
+    doc.setFontSize(8);
+    doc.setTextColor(95, 105, 97);
+    const disclaimer = "Informe descriptivo de una planta. Las diferencias observadas no demuestran por sí solas el efecto causal de un fertilizante.";
+    const wrapped = doc.splitTextToSize(disclaimer, usable);
+    doc.text(wrapped, left, y + 2);
+    y += wrapped.length * 4 + 7;
+  }
+
+  const totalPages = doc.getNumberOfPages();
+  for (let page = 1; page <= totalPages; page++) {
+    doc.setPage(page);
+    doc.setTextColor(110, 120, 112);
+    doc.setFontSize(8);
+    doc.text(`AgroVision · Página ${page} de ${totalPages}`, left, pageHeight - 9);
+  }
   doc.save("AgroVision_seguimiento.pdf");
 }
