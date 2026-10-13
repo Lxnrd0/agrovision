@@ -748,10 +748,11 @@ h1 > span {
 }
 .image-bottom h3 {
   color: white;
-  font-size: 24px;
-  letter-spacing: -0.7px;
+  font-size: 16px;
+  font-weight: 400;
+  letter-spacing: -0.2px;
   margin-top: 5px;
-  line-height: 1.15;
+  line-height: 1.3;
   overflow-wrap: anywhere;
 }
 .image-change {
@@ -2498,7 +2499,7 @@ textarea {
     bottom: 18px;
   }
   .image-bottom h3 {
-    font-size: 23px;
+    font-size: 16px;
   }
   .image-top {
     left: 10px;
