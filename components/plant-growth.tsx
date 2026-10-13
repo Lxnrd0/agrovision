@@ -122,7 +122,7 @@ export default function PlantGrowth({
       className="panel"
       style={{ padding: 20, marginBottom: 28 }}
     >
-      <h2>Crecimiento de mi planta</h2>
+      <h2>Crecimiento por planta</h2>
 
       <p
         style={{
@@ -130,7 +130,7 @@ export default function PlantGrowth({
           margin: "8px 0 18px",
         }}
       >
-        Evolución de las mediciones manuales durante el seguimiento.
+        Mediciones manuales según los días desde la siembra.
       </p>
 
       <div className="form-grid" style={{ marginBottom: 18 }}>
@@ -142,7 +142,7 @@ export default function PlantGrowth({
             onChange={(event) => setSelectedKey(event.target.value)}
           >
             {!plants.length && (
-              <option value="">Todavía no hay plantas registradas</option>
+              <option value="">Sin plantas registradas</option>
             )}
 
             {plants.map((item) => (
@@ -157,7 +157,7 @@ export default function PlantGrowth({
         </label>
 
         <label>
-          Medida que deseas revisar
+          Variable
           <select
             value={metricKey}
             onChange={(event) =>
@@ -307,14 +307,13 @@ export default function PlantGrowth({
 
           {points.length === 1 && (
             <p style={{ color: "var(--muted)", margin: "8px 0" }}>
-              Hay una sola medida. La evolución aparecerá al añadir
-              mediciones de otras fechas.
+              Solo hay una medición. Registra otra fecha para ver el cambio.
             </p>
           )}
 
           {first && last && points.length >= 2 && (
             <p style={{ margin: "12px 0" }}>
-              Cambio entre la primera y la última medida:{" "}
+              Cambio entre la primera y la última medición:{" "}
               <strong>
                 {last.measured - first.measured > 0 ? "+" : ""}
                 {(last.measured - first.measured).toFixed(
@@ -329,8 +328,8 @@ export default function PlantGrowth({
       ) : (
         <p style={{ margin: "16px 0", color: "var(--muted)" }}>
           {plant
-            ? "Esta planta todavía no tiene mediciones manuales de la variable seleccionada."
-            : "Registra una planta para comenzar su seguimiento."}
+            ? "No hay mediciones manuales de esta variable para la planta seleccionada."
+            : "Registra una planta para ver su crecimiento."}
         </p>
       )}
 
@@ -353,7 +352,7 @@ export default function PlantGrowth({
                   <td>{reading.day} días</td>
                   <td>
                     {reading.measured === null
-                      ? "No medido manualmente"
+                      ? "Sin medición manual"
                       : reading.measured.toFixed(
                           metricKey === "leafCount" ? 0 : 2,
                         )}
