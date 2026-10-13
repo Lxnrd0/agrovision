@@ -63,8 +63,8 @@ export default function AnalysisPanel({
       <section className="panel optical">
         <div className="panel-title">
           <div>
-            <span className="eyebrow">ENTRADA ÓPTICA</span>
-            <h2>Una imagen. Más información.</h2>
+            <span className="eyebrow">FOTOGRAFÍA DEL CULTIVO</span>
+            <h2>Análisis de imagen</h2>
           </div>
           <ScanLine size={22} />
         </div>
@@ -92,8 +92,8 @@ export default function AnalysisPanel({
           ) : (
             <div className="image-empty">
               <ImagePlus size={42} />
-              <h3>Tu próxima observación empieza aquí</h3>
-              <p>Arrastra una fotografía del rabanito.</p>
+              <h3>Carga una fotografía</h3>
+              <p>Arrastra aquí una imagen de tu planta.</p>
             </div>
           )}
 
@@ -108,7 +108,7 @@ export default function AnalysisPanel({
                   ? "MUESTRA DE EJEMPLO"
                   : "IMAGEN CARGADA"}
             </span>
-            <span className="image-chip">VISIÓN / 01</span>
+            <span className="image-chip">RABANITO</span>
           </div>
 
           {busy && <div className="scan-beam" />}
@@ -129,8 +129,8 @@ export default function AnalysisPanel({
               </span>
               <h3>
                 {source === "demo"
-                  ? "Una mirada más cerca."
-                  : imageName || "Nueva muestra"}
+                  ? "Imagen de ejemplo"
+                  : imageName || "Fotografía cargada"}
               </h3>
             </div>
           </div>
@@ -162,7 +162,7 @@ export default function AnalysisPanel({
             <Upload size={20} />
           </span>
           <span>
-            <strong>Sube o arrastra tu fotografía</strong>
+            <strong>Selecciona o arrastra una fotografía</strong>
             <small>JPG, PNG o WEBP · Hasta 8 MB</small>
           </span>
           <span className="small-button">Explorar</span>
@@ -180,7 +180,7 @@ export default function AnalysisPanel({
           </label>
 
           <label>
-            Motor de análisis
+            Tipo de análisis
             <select
               value={mode}
               disabled={busy}
@@ -189,7 +189,7 @@ export default function AnalysisPanel({
               }
             >
               <option value="demo">Demostración</option>
-              <option value="real">Gemini · Visión IA</option>
+              <option value="real">Gemini (IA)</option>
             </select>
           </label>
         </div>
@@ -228,7 +228,7 @@ export default function AnalysisPanel({
             <Info size={14} />
             {mode === "demo"
               ? "La demostración utiliza datos simulados."
-              : "La foto se analizará con el motor configurado en el servidor."}
+              : "Se analizará la fotografía que cargaste."}
           </span>
 
           <button
@@ -255,7 +255,7 @@ export default function AnalysisPanel({
       <section className="panel diagnosis">
         <div className="panel-title">
           <div>
-            <span className="eyebrow">INTELIGENCIA APLICADA</span>
+            <span className="eyebrow">RESULTADOS DEL ANÁLISIS</span>
             <h2>Diagnóstico visual</h2>
           </div>
           <span className="tiny-icon">
@@ -304,7 +304,7 @@ export default function AnalysisPanel({
 
             <div className="confidence">
               <div>
-                <span>Confianza estimada de la IA</span>
+                <span>Confianza indicada por la IA</span>
                 <strong>
                   {diagnosis.confidence}
                   <small>%</small>
@@ -358,7 +358,7 @@ export default function AnalysisPanel({
             </div>
 
             <div className="observations">
-              <h3>Observaciones técnicas</h3>
+              <h3>Observaciones del análisis</h3>
 
               {diagnosis.observations.map((observation, index) => (
                 <p key={index}>
@@ -372,7 +372,7 @@ export default function AnalysisPanel({
 
             <details className="limitations">
               <summary>
-                Recomendaciones y límites del análisis
+                Recomendaciones y limitaciones
               </summary>
 
               {[
@@ -389,7 +389,7 @@ export default function AnalysisPanel({
               disabled={busy}
               onClick={onReport}
             >
-              Usar diagnóstico en un reporte
+              Registrar diagnóstico
               <ArrowUpRight size={18} />
             </button>
           </>
@@ -398,13 +398,13 @@ export default function AnalysisPanel({
             <ScanLine size={42} />
             <h3>
               {busy
-                ? "Observando tu cultivo…"
-                : "Todo listo para analizar"}
+                ? "Analizando imagen…"
+                : "Sin análisis realizado"}
             </h3>
             <p>
               {busy
-                ? "Identificando características visibles."
-                : "Carga una imagen y selecciona el motor para obtener tus observaciones."}
+                ? "Revisando características visibles."
+                : "Carga una fotografía y selecciona el tipo de análisis."}
             </p>
           </div>
         )}
