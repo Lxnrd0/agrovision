@@ -1,11 +1,14 @@
+
 import type { Metadata } from "next";
 import "./globals.css";
+
 export const metadata: Metadata = {
-  title: "AgroVision | Sistema inteligente de monitoreo agrícola",
+  title: "AgroVisión | Monitoreo del cultivo de rabanito",
   description:
-    "Analiza tus cultivos, registra el trabajo de campo y compara tratamientos en un solo lugar.",
+    "Plataforma de seguimiento del cultivo de rabanito. Registra observaciones de campo, consulta mediciones y compara tratamientos de fertilización.",
   icons: { icon: "/icon.svg" },
 };
+
 export default function RootLayout({
   children,
 }: {
