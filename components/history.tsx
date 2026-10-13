@@ -132,10 +132,9 @@ export default function History({
     <>
       <div className="section-heading">
         <div>
-          <h2>Bitácora de seguimiento</h2>
+          <h2>Registro de observaciones</h2>
           <p>
-            Cada registro es una visita a la planta.
-            Revisa sus medidas, fotografías y observaciones.
+            Consulta las medidas, fotografías y notas de cada visita.
           </p>
         </div>
 
@@ -149,7 +148,7 @@ export default function History({
           <Search size={18} />
           <input
             aria-label="Buscar en bitácora"
-            placeholder="Buscar planta, responsable, abono o dosis…"
+            placeholder="Buscar planta, responsable o fertilizante…"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
           />
@@ -262,12 +261,12 @@ export default function History({
                   <p>
                     {record.fertilizer}
                     {" · "}
-                    {record.dose || "Dosis pendiente"}
+                    {record.dose || "Dosis no registrada"}
                   </p>
 
                   <p>
                     {plantAge === null
-                      ? "Fecha de siembra pendiente o inválida"
+                      ? "Fecha de siembra no válida"
                       : `${plantAge} días desde la siembra`}
                   </p>
 
@@ -346,10 +345,10 @@ export default function History({
         <div className="empty-state">
           <NotebookPen size={38} />
 
-          <h3>No hay observaciones con estos filtros</h3>
+          <h3>No se encontraron observaciones</h3>
 
           <p>
-            Prueba otra búsqueda o registra una visita a tu planta.
+            Cambia los filtros o registra una observación.
           </p>
 
           <button
@@ -488,11 +487,11 @@ export default function History({
             ))
           ) : (
             <p className="detail-copy">
-              Sin observaciones escritas.
+              Sin observaciones registradas.
             </p>
           )}
 
-          <h3>Observaciones originales de IA</h3>
+          <h3>Observaciones de IA</h3>
 
           {(details.aiObservations ?? []).length ? (
             details.aiObservations!.map((item, index) => (
@@ -502,11 +501,11 @@ export default function History({
             ))
           ) : (
             <p className="detail-copy">
-              Sin observaciones originales de IA guardadas.
+              Sin observaciones de IA.
             </p>
           )}
 
-          <h3>Recomendaciones del análisis</h3>
+          <h3>Recomendaciones</h3>
 
           {details.recommendations.length ? (
             details.recommendations.map((item, index) => (
