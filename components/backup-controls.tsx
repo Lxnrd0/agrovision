@@ -273,7 +273,7 @@ export default function BackupControls({
 
     try {
       if (!records.length) {
-        throw new Error("No hay observaciones para respaldar.");
+        throw new Error("No hay observaciones para guardar.");
       }
 
       const copies: FieldRecord[] = [];
@@ -350,13 +350,13 @@ export default function BackupControls({
       setTimeout(() => URL.revokeObjectURL(url), 1000);
 
       notify(
-        `Respaldo generado: ${copies.length} observaciones con sus fotografías adjuntas.`,
+        `Copia descargada: ${copies.length} observaciones y sus fotografías.`,
       );
     } catch (error) {
       notify(
         error instanceof Error
           ? error.message
-          : "No se pudo generar el respaldo.",
+          : "No se pudo crear la copia de seguridad.",
         true,
       );
     } finally {
@@ -385,7 +385,7 @@ export default function BackupControls({
         !Array.isArray(backup.records)
       ) {
         throw new Error(
-          "Selecciona un respaldo JSON de AgroVision versión 1.",
+          "Selecciona una copia JSON válida de AgroVisión (versión 1).",
         );
       }
 
@@ -395,13 +395,13 @@ export default function BackupControls({
       for (const item of backup.records) {
         if (!isRecord(item)) {
           throw new Error(
-            "El respaldo contiene un registro inválido. No se importó ningún dato.",
+            "El archivo contiene un registro inválido. No se importaron datos.",
           );
         }
 
         if (ids.has(item.id)) {
           throw new Error(
-            "El respaldo contiene identificadores de registro repetidos.",
+            "El archivo contiene identificadores repetidos.",
           );
         }
 
@@ -415,7 +415,7 @@ export default function BackupControls({
       onRestored(next);
 
       notify(
-        `${added} observaciones añadidas. ${
+        `${added} observaciones restauradas. ${
           incoming.length - added
         } ya existían y se conservaron sin cambios.`,
       );
@@ -439,13 +439,13 @@ export default function BackupControls({
       style={{ padding: 16, marginBottom: 22 }}
     >
       <h2 style={{ fontSize: 17 }}>
-        Respaldo de mi seguimiento
+        Copia de seguridad
       </h2>
 
       <p className="detail-copy">
-        Guarda una copia con tus observaciones, fotografías
-        y análisis de IA. Al restaurar, se añaden registros
-        que falten; los que ya existen conservan su versión actual.
+        Guarda tus observaciones, fotografías y análisis de IA
+        en un archivo JSON. Al restaurarlo, solo se agregan los
+        registros que faltan; los existentes no se modifican.
       </p>
 
       <div
@@ -462,7 +462,7 @@ export default function BackupControls({
           onClick={() => void saveBackup()}
         >
           <Download size={17} />
-          {busy ? "Procesando…" : "Guardar respaldo"}
+          {busy ? "Procesando…" : "Descargar copia"}
         </button>
 
         <button
@@ -472,7 +472,7 @@ export default function BackupControls({
           onClick={() => picker.current?.click()}
         >
           <Upload size={17} />
-          Restaurar respaldo
+          Restaurar copia
         </button>
       </div>
 
