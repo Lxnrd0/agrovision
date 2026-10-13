@@ -349,7 +349,7 @@ export default function ReportForm({
 
   return (
     <Modal
-      title="Registrar observación de rabanito"
+      title="Nueva observación"
       wide
       onClose={() => {
         if (!busy) onClose();
@@ -357,14 +357,12 @@ export default function ReportForm({
     >
       <form className="tracking-form" onSubmit={submit}>
         <p style={noteStyle}>
-          Selecciona una planta o registra una nueva.
-          Después añade lo que observaste y mediste hoy.
+          Selecciona una planta y registra sus medidas.
         </p>
 
         {source === "demo" && (
           <p style={noteStyle} role="note">
-            Este es un ejemplo y no participará en las
-            comparaciones de plantas reales.
+            Registro de ejemplo. No se incluye en las comparaciones reales.
           </p>
         )}
 
@@ -375,7 +373,7 @@ export default function ReportForm({
 
           <div className="form-grid">
             <label className="span-2">
-              ¿Qué planta vas a observar?
+              Planta
               <select
                 value={selectedId}
                 onChange={(event) =>
@@ -404,7 +402,7 @@ export default function ReportForm({
                 placeholder="Ej. R-001"
               />
               <small>
-                Usa el código de la etiqueta de esta planta.
+                Usa el mismo código en cada observación.
               </small>
             </label>
 
@@ -446,7 +444,7 @@ export default function ReportForm({
           <p style={noteStyle}>
             {isExisting
               ? "Se conserva el tratamiento registrado para esta planta."
-              : "Registra el tratamiento asignado en tu experimento."}
+              : "Indica el fertilizante utilizado en el experimento."}
           </p>
 
           <div className="form-grid">
@@ -482,7 +480,7 @@ export default function ReportForm({
                   setDoseFrequency("");
                 }}
               >
-                Usar control sin fertilizante
+                Seleccionar control sin fertilizante
               </button>
             )}
 
@@ -564,15 +562,14 @@ export default function ReportForm({
           </div>
 
           <p style={{ ...noteStyle, margin: "14px 0 0" }}>
-            La dosis describe el tratamiento. Registrar una
-            observación no significa que aplicaste abono ese día.
-            Anota las aplicaciones efectivas en las observaciones.
+            La dosis indica el tratamiento previsto. Anota en observaciones
+            cuándo apliques fertilizante.
           </p>
         </fieldset>
 
         <fieldset style={sectionStyle} disabled={busy}>
           <legend style={legendStyle}>
-            3. Observación y medidas de campo
+            3. Mediciones de la planta
           </legend>
 
           <div className="form-grid">
@@ -592,7 +589,7 @@ export default function ReportForm({
             </label>
 
             <div className="span-2" role="status" style={noteStyle}>
-              Edad de cultivo en esta visita: <strong>
+              Edad de la planta: <strong>
                 {validAge === null ? "Selecciona fechas válidas" : `${validAge} días desde la siembra`}
               </strong>
             </div>
@@ -617,8 +614,7 @@ export default function ReportForm({
                 placeholder="Ej. 8.5"
               />
               <small>
-                Mide desde el suelo hasta el punto más alto,
-                usando el mismo criterio en cada visita.
+                Mide desde el suelo hasta el punto más alto, siempre del mismo modo.
               </small>
             </label>
 
@@ -632,8 +628,7 @@ export default function ReportForm({
                 placeholder="Ej. 5"
               />
               <small>
-                Cuenta con el mismo criterio en cada visita.
-                Vacío significa que no las contaste.
+                Cuenta las hojas del mismo modo en cada visita. Si no las contaste, deja vacío.
               </small>
             </label>
 
@@ -647,31 +642,27 @@ export default function ReportForm({
                 placeholder="Opcional · Ej. 2.4"
               />
               <small>
-                Regístralo si puedes medirlo directamente.
-                Si el bulbo está enterrado o no es accesible,
-                deja este campo vacío.
+                Solo si puedes medir el bulbo. Si está enterrado, deja vacío.
               </small>
             </label>
           </div>
 
           <p style={{ ...noteStyle, margin: "14px 0 0" }}>
-            Deja vacía cualquier medida que no tomaste.
-            No escribas cero para representar un dato faltante.
+            Si no mediste una variable, deja el campo vacío. No pongas cero.
           </p>
         </fieldset>
 
         <fieldset style={sectionStyle} disabled={busy}>
           <legend style={legendStyle}>
-            4. Riego y condiciones del cultivo (opcional)
+            4. Riego y condiciones (opcional)
           </legend>
           <p style={noteStyle}>
-            Registra solo condiciones observadas o medidas realmente.
-            Estos datos aparecerán en la bitácora como notas; por ahora
-            no se usan para calcular promedios ni gráficos.
+            Registra solo datos observados o medidos. Se guardan como notas,
+            no se usan en las gráficas.
           </p>
           <div className="form-grid">
             <label>
-              ¿Se regó en esta visita?
+              ¿Regaste la planta?
               <select value={watering} onChange={(event) => {
                 setWatering(event.target.value);
                 if (event.target.value !== "si") setWaterAmount("");
@@ -719,7 +710,7 @@ export default function ReportForm({
 
         <fieldset style={sectionStyle} disabled={busy}>
           <legend style={legendStyle}>
-            5. Estado, síntomas y fotografía
+            5. Estado y fotografía
           </legend>
 
           <div className="form-grid">
@@ -733,8 +724,7 @@ export default function ReportForm({
                 <option value="Enfermo">Enfermo</option>
               </select>
               <small>
-                Describe los síntomas visibles abajo para
-                respaldar tu evaluación.
+                Si observas síntomas, descríbelos abajo.
               </small>
             </label>
 
@@ -838,8 +828,7 @@ export default function ReportForm({
           )}
 
           <p style={{ ...noteStyle, margin: "14px 0 0" }}>
-            Procura fotografiar la misma planta desde una
-            posición semejante en cada visita.
+            Fotografía la misma planta desde una posición similar en cada visita.
           </p>
 
           {diagnosis && (
@@ -850,7 +839,7 @@ export default function ReportForm({
                   color: "var(--green-text)",
                 }}
               >
-                Consultar análisis de la fotografía
+                Ver análisis de la fotografía
               </summary>
 
               <div style={{ marginTop: "12px" }}>
@@ -865,7 +854,7 @@ export default function ReportForm({
 
                 <p style={noteStyle}>
                   Estado sugerido por el modelo: {diagnosis.health}.
-                  Confirma tu propia observación en el formulario.
+                  Comprueba el estado de la planta antes de registrarlo.
                 </p>
 
                 {diagnosis.observations.length > 0 && (
@@ -883,9 +872,8 @@ export default function ReportForm({
                 )}
 
                 <p style={noteStyle}>
-                  Las estimaciones se guardan por separado.
-                  No completan las mediciones manuales.
-                  La confianza del modelo no demuestra su precisión.
+                  Las estimaciones de IA se guardan aparte y no reemplazan
+                  las mediciones manuales. Su confianza no garantiza precisión.
                 </p>
               </div>
             </details>
