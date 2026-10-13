@@ -291,13 +291,11 @@ export default function Comparison({
 
       <div className="section-heading">
         <div>
-          <h2>Comparación del crecimiento</h2>
+          <h2>Comparativa de crecimiento</h2>
           <p>
-            Resultados por lote, tratamiento y dosis.
-            Los promedios usan mediciones manuales.
-            Los filtros siguientes se aplican a las tablas;
-            la gráfica superior muestra el seguimiento completo
-            de la planta que selecciones en ella.
+            Compara los registros por lote, tratamiento y edad.
+            Los promedios se calculan con medidas manuales.
+            La gráfica superior tiene sus propios controles.
           </p>
         </div>
       </div>
@@ -319,7 +317,7 @@ export default function Comparison({
               setSelectedPlant("");
             }}
           >
-            <option value="">Todos los lotes, por separado</option>
+            <option value="">Todos los lotes</option>
             {zones.map((item) => (
               <option key={item} value={item}>
                 {item || "Sin lote"}
@@ -397,10 +395,9 @@ export default function Comparison({
 
       <div className="table-note">
         <p>
-          En los filtros actuales: <strong>{plants.length}</strong>{" "}
-          plantas distintas y <strong>{observations.length}</strong>{" "}
-          observaciones; {measuredObservations} tienen al menos
-          una medida manual válida.
+          Registros filtrados: <strong>{plants.length}</strong>{" "}
+          plantas y <strong>{observations.length}</strong>{" "}
+          observaciones; {measuredObservations} con mediciones manuales.
         </p>
         <p>
           {targetAge !== undefined && !invalidRange && (
@@ -422,7 +419,7 @@ export default function Comparison({
                 color: "var(--muted)",
               }}
             >
-              Última observación válida de cada planta dentro de la edad seleccionada
+              Última observación válida por planta en el rango seleccionado
             </caption>
 
             <thead>
@@ -519,12 +516,11 @@ export default function Comparison({
           <div>
             <h2>Gráfica comparativa por fertilizante</h2>
             <p>
-              Promedios automáticos de mediciones manuales, agrupados por edad, lote,
-              tratamiento y dosis.
+              Promedios de medidas manuales por edad, lote y tratamiento.
             </p>
           </div>
           <label style={{ minWidth: 190 }}>
-            Variable para comparar
+            Medida a comparar
             <select
               value={chartMetric}
               onChange={(event) =>
@@ -550,9 +546,8 @@ export default function Comparison({
         ) : (
           <>
             <p className="table-note">
-              Gráficas generadas automáticamente con las observaciones reales.
-              Cada grupo muestra plantas de la misma edad; se separan lote,
-              fertilizante y dosis. Los filtros de edad son opcionales.
+              Cada gráfica agrupa observaciones de la misma edad y separa
+              los tratamientos por lote y dosis.
             </p>
             {chartGroups.map((group) => (
               <div key={group.days} style={{ marginTop: 24 }}>
@@ -635,13 +630,13 @@ export default function Comparison({
         <div>
           <h2>Seguimiento de cada planta</h2>
           <p>
-            Mediciones y cambio desde la medida manual válida anterior.
+            Mediciones y cambios respecto a la medición manual anterior.
           </p>
         </div>
       </div>
 
       <label style={{ maxWidth: 480, marginBottom: 16 }}>
-        Planta que deseas revisar
+        Seleccionar planta
         <select
           value={activePlant}
           onChange={(event) => setSelectedPlant(event.target.value)}
@@ -809,10 +804,8 @@ export default function Comparison({
         <div>
           <h2>Comprobación de las estimaciones de IA</h2>
           <p>
-            Estimación original frente a medición manual del mismo
-            registro. Se aplican los filtros de lote y edad,
-            independientemente de la planta seleccionada en la
-            tabla de seguimiento.
+            Compara las estimaciones de IA con las mediciones manuales
+            del mismo registro. Se aplican los filtros de lote y edad.
           </p>
         </div>
       </div>
@@ -880,7 +873,7 @@ export default function Comparison({
 
         <details style={{ padding: 16 }}>
           <summary style={{ cursor: "pointer" }}>
-            Revisar los pares utilizados
+            Ver mediciones comparadas
           </summary>
 
           <div className="table-scroll" style={{ marginTop: 12 }}>
