@@ -696,7 +696,7 @@ h1 > span {
 }
 .scan-frame {
   position: absolute;
-  inset: 76px 20% 79px;
+  inset: 7.5%;
   pointer-events: none;
 }
 .scan-frame i {
@@ -2508,7 +2508,7 @@ textarea {
     font-size: 8px;
   }
   .scan-frame {
-    inset: 66px 18% 79px;
+    inset: 7.5%;
   }
   .upload-strip {
     margin: 13px;
