@@ -1,4 +1,5 @@
 "use client";
+
 import { useState } from "react";
 import {
   Droplets,
@@ -10,13 +11,14 @@ import {
   BookOpen,
 } from "lucide-react";
 import { Modal, Badge } from "./ui";
+
 const protocols = [
   {
     icon: Droplets,
     number: "01",
     tag: "EN CAMPO",
-    title: "Riego de precisión",
-    text: "La cantidad correcta, en el momento adecuado.",
+    title: "Riego",
+    text: "Control de la humedad y frecuencia de riego.",
     steps: [
       "Evalúa la humedad del suelo antes de regar; evita decidir solo por la apariencia de las hojas.",
       "Ajusta frecuencia y volumen según textura del suelo, etapa del cultivo y clima local.",
@@ -28,9 +30,9 @@ const protocols = [
   {
     icon: Snowflake,
     number: "02",
-    tag: "POST-COSECHA",
-    title: "Cadena de frío",
-    text: "Conserva la frescura desde la cosecha.",
+    tag: "POSCOSECHA",
+    title: "Conservación en frío",
+    text: "Condiciones de almacenamiento tras la cosecha.",
     steps: [
       "Lleva las hortalizas a sombra tras la cosecha y reduce demoras antes del enfriamiento.",
       "Define temperatura y humedad según cultivo, presentación y destino comercial.",
@@ -44,7 +46,7 @@ const protocols = [
     number: "03",
     tag: "PREVENCIÓN",
     title: "Manejo de plagas",
-    text: "Observar temprano marca la diferencia.",
+    text: "Revisión de síntomas y prevención de daños.",
     steps: [
       "Inspecciona hojas por ambas caras y revisa diferentes puntos del lote.",
       "Registra el daño y solicita identificación antes de elegir un tratamiento.",
@@ -57,8 +59,8 @@ const protocols = [
     icon: Waves,
     number: "04",
     tag: "INOCUIDAD",
-    title: "Lavado post-cosecha",
-    text: "Cuidado que se mantiene hasta la mesa.",
+    title: "Lavado poscosecha",
+    text: "Limpieza y manipulación después de la cosecha.",
     steps: [
       "Utiliza agua de calidad apta para el proceso y equipos limpios.",
       "Separa hortalizas dañadas y retira tierra antes del lavado.",
@@ -68,19 +70,22 @@ const protocols = [
     color: "green",
   },
 ];
+
 export default function Protocols() {
   const [selected, setSelected] = useState<number | null>(null);
+
   return (
     <>
       <div className="section-heading">
         <div>
-          <h2>Buenas prácticas. Mejores cosechas.</h2>
-          <p>Una guía de campo para cuidar cada etapa del cultivo.</p>
+          <h2>Buenas prácticas de cultivo</h2>
+          <p>Recomendaciones para el manejo y la poscosecha.</p>
         </div>
         <Badge tone="gray">
           <BookOpen size={14} />4 protocolos
         </Badge>
       </div>
+
       <div className="protocol-grid">
         {protocols.map((p, i) => (
           <button
@@ -103,17 +108,18 @@ export default function Protocols() {
           </button>
         ))}
       </div>
+
       <div className="practice-note">
         <LeafMark />
         <div>
-          <h3>El campo siempre tiene la última palabra.</h3>
+          <h3>Verificación en campo</h3>
           <p>
-            Adapta estas orientaciones a tu cultivo, agua y condiciones locales
-            con acompañamiento técnico. El análisis de una foto complementa la
-            inspección en campo.
+            Adapta las recomendaciones a las condiciones del cultivo.
+            El análisis de imágenes complementa la observación directa.
           </p>
         </div>
       </div>
+
       {selected !== null && (
         <Modal
           title={protocols[selected].title}
@@ -129,8 +135,7 @@ export default function Protocols() {
             ))}
           </ol>
           <p className="detail-copy">
-            Orientaciones generales. No sustituyen un procedimiento validado de
-            la unidad productiva.
+            Estas recomendaciones son generales y deben adaptarse a las condiciones del cultivo.
           </p>
           <button className="button primary" onClick={() => setSelected(null)}>
             <Check size={17} />
@@ -141,6 +146,7 @@ export default function Protocols() {
     </>
   );
 }
+
 function LeafMark() {
   return (
     <div className="practice-icon">
