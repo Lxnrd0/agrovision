@@ -488,7 +488,7 @@ export default function Dashboard() {
           </span>
           <span>
             agro<span>vision</span>
-            <small>INTELIGENCIA QUE CULTIVA</small>
+            <small>SEGUIMIENTO DEL CULTIVO</small>
           </span>
         </a>
 
@@ -497,7 +497,7 @@ export default function Dashboard() {
             <Leaf size={19} />
           </span>
           <div>
-            <strong>Mi espacio agrícola</strong>
+            <strong>Mi monitoreo</strong>
             <small>Monitoreo de rabanito</small>
           </div>
           <ChevronDown size={15} />
@@ -531,8 +531,8 @@ export default function Dashboard() {
             <span className="local-icon">
               <HardDrive size={19} />
             </span>
-            <strong>Tu campo, conectado.</strong>
-            <p>Bitácora disponible sin conexión en este navegador.</p>
+            <strong>Almacenamiento local</strong>
+            <p>Tus registros se guardan en este navegador.</p>
             <div>
               <span className="status-dot" />
               Almacenamiento local
@@ -554,7 +554,7 @@ export default function Dashboard() {
               <Sprout size={18} />
             </span>
             <div>
-              <strong>Proyecto agrícola</strong>
+              <strong>Proyecto de rabanito</strong>
               <small>Cultivo de rabanito</small>
             </div>
             <span className="version">v1.1</span>
@@ -616,13 +616,13 @@ export default function Dashboard() {
             <div>
               <div className="page-eyebrow">
                 <span className="mini-line" />
-                {" "}SISTEMA INTELIGENTE DE MONITOREO AGRÍCOLA
+                {" "}REGISTRO Y SEGUIMIENTO DEL CULTIVO
               </div>
               <h1>
-                Conoce mejor lo que cultivas<span>.</span>
+                Monitoreo de rabanito<span>.</span>
               </h1>
               <p>
-                Observa, analiza y acompaña cada etapa de tu rabanito.
+                Registra y consulta las observaciones de tu planta.
               </p>
             </div>
 
@@ -683,12 +683,12 @@ export default function Dashboard() {
                 {String(stats.count).padStart(2, "0")}
                 <span className="stat-pill">BITÁCORA</span>
               </div>
-              <p>Registros guardados en tu espacio</p>
+              <p>Registros guardados</p>
             </div>
 
             <div className="stat-card">
               <div className="stat-top">
-                <span>Observaciones clasificadas como sanas</span>
+                <span>Observaciones sanas</span>
                 <span className="stat-icon">
                   <ShieldCheck size={19} />
                 </span>
@@ -701,13 +701,13 @@ export default function Dashboard() {
                 </span>
               </div>
               <p>
-                {stats.assessed} observaciones reales con estado declarado
+                {stats.assessed} observaciones con estado registrado
               </p>
             </div>
 
             <div className="stat-card">
               <div className="stat-top">
-                <span>Diámetro manual promedio</span>
+                <span>Diámetro promedio medido</span>
                 <span className="stat-icon">
                   <Ruler size={19} />
                 </span>
@@ -717,7 +717,7 @@ export default function Dashboard() {
                 <small>cm</small>
               </div>
               <p>
-                {stats.measured} observaciones reales con medida manual
+                {stats.measured} observaciones con diámetro medido
               </p>
             </div>
 
@@ -738,7 +738,7 @@ export default function Dashboard() {
                     ))}
                 </span>
               </div>
-              <p>Zonas con registros reales guardados</p>
+              <p>Lotes registrados</p>
             </div>
           </div>
 
@@ -847,8 +847,8 @@ export default function Dashboard() {
             <section className="recent-section">
               <div className="recent-heading">
                 <div>
-                  <h2>El pulso de tu campo</h2>
-                  <p>Últimas observaciones registradas</p>
+                  <h2>Observaciones recientes</h2>
+                  <p>Últimos registros</p>
                 </div>
                 <button
                   type="button"
@@ -906,7 +906,7 @@ export default function Dashboard() {
 
                 {!records.length && (
                   <p className="muted">
-                    Tu próxima observación aparecerá aquí.
+                    No hay observaciones registradas.
                   </p>
                 )}
               </div>
@@ -916,7 +916,7 @@ export default function Dashboard() {
           <footer className="main-footer">
             <span>
               <Sprout size={14} />
-              {" "}Cultiva con datos. Decide con criterio.
+              {" "}Seguimiento del cultivo de rabanito
             </span>
             <span>
               {records.some((record) => record.source === "demo")
@@ -982,7 +982,7 @@ export default function Dashboard() {
 
       {help && (
         <Modal
-          title="De la fotografía al seguimiento"
+          title="Guía de uso"
           onClose={() => setHelp(false)}
         >
           <ol className="protocol-steps">
