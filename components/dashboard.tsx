@@ -15,6 +15,8 @@ import {
   Grid2X2,
   Leaf,
   Menu,
+  PanelLeftClose,
+  PanelLeftOpen,
   Moon,
   Plus,
   Ruler,
@@ -115,6 +117,7 @@ export default function Dashboard() {
 
   const [dark, setDark] = useState(true);
   const [menu, setMenu] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [help, setHelp] = useState(false);
   const [configured, setConfigured] = useState(false);
@@ -474,7 +477,7 @@ export default function Dashboard() {
         />
       )}
 
-      <aside className={`sidebar ${menu ? "open" : ""}`}>
+      <aside className={`sidebar ${menu ? "open" : ""} ${sidebarCollapsed ? "collapsed" : ""}`}>
         <a
           className="brand"
           href="#"
@@ -491,6 +494,17 @@ export default function Dashboard() {
             <small>SEGUIMIENTO DEL CULTIVO</small>
           </span>
         </a>
+
+        <button
+          type="button"
+          className="sidebar-collapse-toggle"
+          onClick={() => setSidebarCollapsed((current) => !current)}
+          aria-label={sidebarCollapsed ? "Expandir menú lateral" : "Plegar menú lateral"}
+          aria-expanded={!sidebarCollapsed}
+          title={sidebarCollapsed ? "Expandir menú" : "Plegar menú"}
+        >
+          {sidebarCollapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
+        </button>
 
         <div className="workspace-chip">
           <span className="workspace-icon">
@@ -513,6 +527,8 @@ export default function Dashboard() {
               className={view === section.id ? "active" : ""}
               onClick={() => choose(section.id)}
               aria-current={view === section.id ? "page" : undefined}
+              title={section.label}
+              aria-label={section.label}
             >
               <section.icon size={19} />
               <span>{section.label}</span>
@@ -543,6 +559,8 @@ export default function Dashboard() {
             type="button"
             className="sidebar-link"
             onClick={() => setHelp(true)}
+            title="Guía de uso"
+            aria-label="Guía de uso"
           >
             <CircleHelp size={18} />
             Guía de uso
@@ -562,7 +580,7 @@ export default function Dashboard() {
         </div>
       </aside>
 
-      <div className="main-shell">
+      <div className={`main-shell ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
         <header className="topbar">
           <div className="breadcrumbs">
             <button
@@ -755,51 +773,7 @@ export default function Dashboard() {
             />
           )}
 
-          <div className="view-bar">
-            <div
-              className="view-tabs"
-              role="tablist"
-              aria-label="Módulos de monitoreo"
-            >
-              {sections.map((section) => (
-                <button
-                  type="button"
-                  key={section.id}
-                  role="tab"
-                  id={`tab-${section.id}`}
-                  aria-selected={view === section.id}
-                  aria-controls="module-panel"
-                  className={view === section.id ? "active" : ""}
-                  onClick={() => setView(section.id)}
-                  onKeyDown={(event) => {
-                    if (
-                      event.key === "ArrowRight" ||
-                      event.key === "ArrowLeft"
-                    ) {
-                      event.preventDefault();
-
-                      const index = sections.findIndex(
-                        (item) => item.id === section.id,
-                      );
-                      const direction =
-                        event.key === "ArrowRight" ? 1 : -1;
-                      const next =
-                        sections[
-                          (index + direction + sections.length) %
-                            sections.length
-                        ];
-
-                      setView(next.id);
-                      document.getElementById(`tab-${next.id}`)?.focus();
-                    }
-                  }}
-                >
-                  <section.icon size={17} />
-                  {section.short}
-                </button>
-              ))}
-            </div>
-
+          <div className="view-bar view-bar-status">
             <span className="sync-label">
               {online ? <Cloud size={15} /> : <WifiOff size={15} />}
               {" "}
@@ -811,8 +785,8 @@ export default function Dashboard() {
 
           <div
             id="module-panel"
-            role="tabpanel"
-            aria-labelledby={`tab-${view}`}
+            role="region"
+            aria-label={sections.find((section) => section.id === view)?.label}
           >
             {view === "analysis" ? (
               <AnalysisPanel
