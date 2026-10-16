@@ -144,52 +144,124 @@ export async function readImage(file: File): Promise<string> {
     "image/jpeg",
     "image/png",
     "image/webp",
+    "image/heic",
+    "image/heif",
   ];
 
-  if (!allowedTypes.includes(file.type)) {
-    throw new Error("Selecciona una imagen JPG, PNG o WEBP.");
+  const extension = file.name.split(".").pop()?.toLowerCase();
+  const inferredType =
+    file.type ||
+    (extension === "jpg" || extension === "jpeg"
+      ? "image/jpeg"
+      : extension === "png"
+        ? "image/png"
+        : extension === "webp"
+          ? "image/webp"
+          : extension === "heic"
+            ? "image/heic"
+            : extension === "heif"
+              ? "image/heif"
+              : "");
+
+  if (!allowedTypes.includes(inferredType)) {
+    throw new Error("Selecciona una imagen JPG, PNG, WEBP o HEIC.");
   }
 
-  if (file.size > 8 * 1024 * 1024) {
-    throw new Error("La imagen no debe superar los 8 MB.");
+  if (file.size > 12 * 1024 * 1024) {
+    throw new Error("La imagen no debe superar los 12 MB.");
   }
 
-  const bitmap = await createImageBitmap(file);
+  // Usamos HTMLImageElement en lugar de depender exclusivamente de
+  // createImageBitmap: es más tolerante con navegadores móviles y con
+  // fotografías provenientes directamente de la cámara.
+  const objectUrl = URL.createObjectURL(file);
+  const image = new Image();
+  image.decoding = "async";
 
   try {
+    await new Promise<void>((resolve, reject) => {
+      image.onload = () => resolve();
+      image.onerror = () =>
+        reject(
+          new Error(
+            "El navegador no pudo leer la fotografía. Prueba con JPG o PNG.",
+          ),
+        );
+      image.src = objectUrl;
+    });
+
     const ratio = Math.min(
       1,
-      1600 / Math.max(bitmap.width, bitmap.height),
+      1280 / Math.max(image.naturalWidth, image.naturalHeight),
     );
+
+    const width = Math.max(1, Math.round(image.naturalWidth * ratio));
+    const height = Math.max(1, Math.round(image.naturalHeight * ratio));
 
     const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
 
-    canvas.width = Math.max(
-      1,
-      Math.round(bitmap.width * ratio),
-    );
-
-    canvas.height = Math.max(
-      1,
-      Math.round(bitmap.height * ratio),
-    );
-
-    const context = canvas.getContext("2d");
+    const context = canvas.getContext("2d", {
+      alpha: false,
+    });
 
     if (!context) {
       throw new Error("No se pudo preparar la fotografía.");
     }
 
-    context.drawImage(
-      bitmap,
-      0,
-      0,
-      canvas.width,
-      canvas.height,
-    );
+    context.drawImage(image, 0, 0, width, height);
 
-    return canvas.toDataURL("image/jpeg", 0.86);
+    const toDataUrl = (quality: number) =>
+      new Promise<string>((resolve, reject) => {
+        canvas.toBlob(
+          (blob) => {
+            if (!blob) {
+              reject(
+                new Error("No se pudo comprimir la fotografía."),
+              );
+              return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = () => {
+              if (typeof reader.result !== "string") {
+                reject(
+                  new Error("No se pudo preparar la fotografía."),
+                );
+                return;
+              }
+
+              resolve(reader.result);
+            };
+            reader.onerror = () =>
+              reject(
+                new Error("No se pudo preparar la fotografía."),
+              );
+            reader.readAsDataURL(blob);
+          },
+          "image/jpeg",
+          quality,
+        );
+      });
+
+    let dataUrl = await toDataUrl(0.82);
+
+    // El servidor limita el cuerpo de la petición. En teléfonos con
+    // fotografías muy complejas reducimos la calidad antes de enviarla.
+    if (dataUrl.length > 6_500_000) {
+      dataUrl = await toDataUrl(0.68);
+    }
+
+    if (dataUrl.length > 6_900_000) {
+      throw new Error(
+        "La fotografía sigue siendo demasiado pesada. Intenta otra imagen.",
+      );
+    }
+
+    return dataUrl;
   } finally {
-    bitmap.close();
+    URL.revokeObjectURL(objectUrl);
   }
 }
+
