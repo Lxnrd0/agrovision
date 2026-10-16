@@ -107,6 +107,14 @@ function fail(
   );
 }
 
+const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+function providerStatus(error: unknown): number | null {
+  if (typeof error !== "object" || error === null || !("status" in error)) return null;
+  const value = Number(error.status);
+  return Number.isFinite(value) ? value : null;
+}
+
 async function limitedJson(request: Request) {
   const reader = request.body?.getReader();
 
@@ -283,41 +291,81 @@ export async function analyze(
       .slice(5)
       .split(";base64,");
 
-    let message = "";
+    let diagnosis: z.infer<typeof diagnosisSchema>;
 
     if (provider === "gemini") {
       const ai = new GoogleGenAI({
         apiKey: env.GEMINI_API_KEY,
-        httpOptions: {
-          timeout: 55_000,
-        },
+        httpOptions: { timeout: 24_000 },
       });
 
-      const response = await ai.models.generateContent({
-        model,
-        contents: [
-          {
-            role: "user",
-            parts: [
-              { text: prompt },
-              {
-                inlineData: {
-                  mimeType,
-                  data: imageData,
-                },
-              },
-            ],
-          },
-        ],
-        config: {
-          responseMimeType: "application/json",
-          responseJsonSchema: schema,
-          temperature: 0.2,
-          maxOutputTokens: 1800,
-        },
-      });
-
-      message = response.text || "";
+      let validated: z.infer<typeof diagnosisSchema> | null = null;
+      let invalidCode = "EMPTY_RESULT";
+      for (let attempt = 1; attempt <= 2; attempt++) {
+        try {
+          const response = await ai.models.generateContent({
+            model,
+            contents: [{
+              role: "user",
+              parts: [
+                { text: prompt },
+                { inlineData: { mimeType, data: imageData } },
+              ],
+            }],
+            config: {
+              responseMimeType: "application/json",
+              responseJsonSchema: schema,
+              temperature: 0.2,
+              maxOutputTokens: 4096,
+            },
+          });
+          const message = response.text || "";
+          const finishReason = response.candidates?.[0]?.finishReason || "UNKNOWN";
+          if (!message) {
+            invalidCode = "EMPTY_RESULT";
+          } else {
+            let parsed: unknown;
+            try {
+              parsed = JSON.parse(message);
+            } catch {
+              invalidCode = "INVALID_JSON";
+              parsed = undefined;
+            }
+            if (parsed !== undefined) {
+              const result = diagnosisSchema.safeParse(parsed);
+              if (result.success) {
+                validated = result.data;
+                break;
+              }
+              invalidCode = "INVALID_SCHEMA";
+              console.warn("AGROVISION_GEMINI_SCHEMA", {
+                attempt,
+                fields: result.error.issues.map((issue) => issue.path.join(".")).slice(0, 12),
+              });
+            }
+          }
+          console.warn("AGROVISION_GEMINI_OUTPUT", { attempt, finishReason, code: invalidCode });
+        } catch (error) {
+          const status = providerStatus(error);
+          const transient = [408, 500, 502, 503, 504].includes(status ?? -1) ||
+            (error instanceof Error && ["AbortError", "TimeoutError", "TypeError"].includes(error.name));
+          console.error("AGROVISION_GEMINI_REQUEST", {
+            attempt,
+            status,
+            name: error instanceof Error ? error.name : "UnknownError",
+          });
+          if (!transient || attempt === 2) throw error;
+        }
+        if (attempt === 1) await wait(800);
+      }
+      if (!validated) {
+        return fail(
+          "Gemini no devolvió un diagnóstico completo. Intenta otra vez o prueba otra foto.",
+          502,
+          invalidCode,
+        );
+      }
+      diagnosis = validated;
     } else {
       const response = await fetch(
         "https://api.openai.com/v1/chat/completions",
@@ -403,20 +451,25 @@ export async function analyze(
       }
 
       const data = await response.json();
-      message = data.choices?.[0]?.message?.content || "";
+      const message = data.choices?.[0]?.message?.content || "";
+      if (!message) {
+        return fail("El motor no devolvió un resultado completo.", 502, "EMPTY_RESULT");
+      }
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(message);
+      } catch {
+        return fail("El motor devolvió un JSON incompleto.", 502, "INVALID_JSON");
+      }
+      const result = diagnosisSchema.safeParse(parsed);
+      if (!result.success) {
+        console.warn("AGROVISION_OPENAI_SCHEMA", {
+          fields: result.error.issues.map((issue) => issue.path.join(".")).slice(0, 12),
+        });
+        return fail("El motor devolvió campos inválidos.", 502, "INVALID_SCHEMA");
+      }
+      diagnosis = result.data;
     }
-
-    if (!message) {
-      return fail(
-        "La imagen no pudo interpretarse con suficiente información. Prueba otra fotografía.",
-        422,
-        "INCOMPLETE_RESULT",
-      );
-    }
-
-    const diagnosis = diagnosisSchema.parse(
-      JSON.parse(message),
-    );
 
     if (!input.scaleReference?.trim()) {
       diagnosis.diameterCm = null;
@@ -435,12 +488,13 @@ export async function analyze(
     const providerName =
       provider === "gemini" ? "Gemini" : "OpenAI";
 
-    const upstreamStatus =
-      typeof error === "object" &&
-      error !== null &&
-      "status" in error
-        ? Number(error.status)
-        : null;
+    const upstreamStatus = providerStatus(error);
+    console.error("AGROVISION_ANALYSIS_ERROR", {
+      provider,
+      model,
+      status: upstreamStatus,
+      name: error instanceof Error ? error.name : "UnknownError",
+    });
 
     if (upstreamStatus === 429) {
       return fail(
