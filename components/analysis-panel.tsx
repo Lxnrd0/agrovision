@@ -139,7 +139,7 @@ export default function AnalysisPanel({
         <input
           type="file"
           ref={input}
-          accept="image/jpeg,image/png,image/webp"
+          accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
           className="sr-only"
           disabled={busy}
           aria-label="Cargar imagen de rabanito"
@@ -163,7 +163,7 @@ export default function AnalysisPanel({
           </span>
           <span>
             <strong>Selecciona o arrastra una fotografía</strong>
-            <small>JPG, PNG o WEBP · Hasta 8 MB</small>
+            <small>JPG, PNG, WEBP o HEIC · Hasta 12 MB</small>
           </span>
           <span className="small-button">Explorar</span>
         </button>
