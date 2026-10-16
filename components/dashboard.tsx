@@ -91,6 +91,25 @@ function currentTime() {
   });
 }
 
+function getClientId() {
+  try {
+    const key = "agrovision-client-id";
+    const existing = localStorage.getItem(key);
+
+    if (existing) return existing;
+
+    const created =
+      typeof crypto.randomUUID === "function"
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+    localStorage.setItem(key, created);
+    return created;
+  } catch {
+    return "";
+  }
+}
+
 export default function Dashboard() {
   const [view, setView] = useState<View>("analysis");
   const [records, setRecords] = useState<FieldRecord[]>([]);
@@ -387,10 +406,13 @@ export default function Dashboard() {
         );
       }
 
+      const clientId = getClientId();
+
       const response = await fetch("/api/analyze-crop", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          ...(clientId ? { "X-Client-ID": clientId } : {}),
           ...(accessToken
             ? { Authorization: `Bearer ${accessToken}` }
             : {}),
@@ -403,11 +425,28 @@ export default function Dashboard() {
         signal: controller.signal,
       });
 
-      const data = await response.json();
+      const responseText = await response.text();
+      let data: { diagnosis?: Diagnosis; source?: string; error?: string };
+
+      try {
+        data = JSON.parse(responseText);
+      } catch {
+        throw new Error(
+          response.ok
+            ? "El servidor devolvió una respuesta no válida. Inténtalo de nuevo."
+            : "El servidor no respondió correctamente. Revisa la conexión e inténtalo de nuevo.",
+        );
+      }
 
       if (!response.ok) {
         throw new Error(
           data.error || "No se pudo analizar la imagen.",
+        );
+      }
+
+      if (!data.diagnosis || !data.source) {
+        throw new Error(
+          "El análisis terminó sin devolver un diagnóstico válido.",
         );
       }
 
