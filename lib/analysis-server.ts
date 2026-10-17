@@ -1,106 +1,96 @@
-      const parsed = parseDiagnosisMessage(message);
-      if (!parsed.diagnosis) {
-        console.error("[AGROVISION] Respuesta del motor no válida", {
-          provider,
-          model,
-          code: parsed.issue,
-          detail: parsed.detail,
-          responseLength: message.length,
-        });
-        return fail(
-          provider === "gemini"
-            ? "Gemini devolvió una respuesta con formato incorrecto. Vuelve a intentarlo."
-            : "El motor de IA devolvió datos con formato incorrecto. Vuelve a intentarlo.",
-          502,
-          parsed.issue,
-        );
-      }
-      diagnosis = parsed.diagnosis;
-    }
+import { z } from "zod";
+import { GoogleGenAI } from "@google/genai";
 
-    if (!input.scaleReference?.trim()) {
-      diagnosis.diameterCm = null;
-    }
+export type EngineEnv = {
+  OPENAI_API_KEY?: string;
+  OPENAI_MODEL?: string;
+  GEMINI_API_KEY?: string;
+  GEMINI_MODEL?: string;
+  ANALYSIS_ACCESS_TOKEN?: string;
+};
 
-    return Response.json(
-      {
-        diagnosis,
-        source: provider,
-        model,
-        analyzedAt: new Date().toISOString(),
-      },
-      { headers },
-    );
-  } catch (error) {
-    const providerName =
-      provider === "gemini" ? "Gemini" : "OpenAI";
+const diagnosisSchema = z.object({
+  crop: z.string().max(200),
+  bulbColor: z.string().max(200),
+  leafColor: z.string().max(200),
+  leafCount: z.number().int().min(0).max(10000).nullable(),
+  diameterCm: z.number().positive().max(1000).nullable(),
+  health: z.enum(["Sano", "Enfermo", "Indeterminado"]),
+  confidence: z.number().min(0).max(100),
+  observations: z.array(z.string().max(1000)).max(12),
+  recommendations: z.array(z.string().max(1000)).max(12),
+  limitations: z.array(z.string().max(1000)).max(12),
+});
 
-    const upstreamStatus =
-      typeof error === "object" &&
-      error !== null &&
-      "status" in error
-        ? Number(error.status)
-        : null;
+const inputSchema = z.object({
+  image: z
+    .string()
+    .max(7_000_000)
+    .regex(/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/]+=*$/),
+  crop: z.string().trim().max(100).default("Rábano"),
+  scaleReference: z.string().max(250).optional(),
+});
 
-    const rawErrorMessage = error instanceof Error ? error.message : String(error);
-    const redactedErrorMessage = [env.GEMINI_API_KEY, env.OPENAI_API_KEY]
-      .filter((key): key is string => Boolean(key))
-      .reduce((message, key) => message.split(key).join("[REDACTED]"), rawErrorMessage)
-      .slice(0, 500);
+const schema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    crop: { type: "string" },
+    bulbColor: { type: "string" },
+    leafColor: { type: "string" },
+    leafCount: { type: ["integer", "null"] },
+    diameterCm: { type: ["number", "null"] },
+    health: {
+      type: "string",
+      enum: ["Sano", "Enfermo", "Indeterminado"],
+    },
+    confidence: { type: "number" },
+    observations: {
+      type: "array",
+      items: { type: "string" },
+    },
+    recommendations: {
+      type: "array",
+      items: { type: "string" },
+    },
+    limitations: {
+      type: "array",
+      items: { type: "string" },
+    },
+  },
+  required: [
+    "crop",
+    "bulbColor",
+    "leafColor",
+    "leafCount",
+    "diameterCm",
+    "health",
+    "confidence",
+    "observations",
+    "recommendations",
+    "limitations",
+  ],
+};
 
-    // Deliberately omit image data, prompt contents, and credentials from logs.
-    console.error("[AGROVISION] Error al consultar el motor de IA", {
-      provider,
-      model,
-      status: upstreamStatus,
-      name: error instanceof Error ? error.name : typeof error,
-      message: redactedErrorMessage,
-    });
+const headers = {
+  "Cache-Control": "no-store",
+  "X-Content-Type-Options": "nosniff",
+};
 
-    if (upstreamStatus === 429) {
-      return fail(
-        "El motor alcanzó su cuota o límite temporal. Inténtalo más tarde.",
-        429,
-        "QUOTA_OR_RATE_LIMIT",
-      );
-    }
-
-    if (
-      upstreamStatus === 401 ||
-      upstreamStatus === 403
-    ) {
-      return fail(
-        "La clave del motor no es válida o no tiene permisos. Revisa su configuración en el servidor.",
-        401,
-        "INVALID_API_KEY",
-      );
-    }
-
-    if (upstreamStatus === 404) {
-      return fail(
-        "El modelo configurado no está disponible para esta cuenta.",
-        502,
-        "MODEL_ACCESS_DENIED",
-      );
-    }
-
-    if (
-      error instanceof Error &&
-      (
-        error.name === "TimeoutError" ||
-        error.name === "AbortError"
-      )
-    ) {
-      return fail(
-        "El análisis tardó demasiado. Inténtalo nuevamente.",
-        504,
-        "ANALYSIS_TIMEOUT",
-      );
-    }
-
-    return fail(
-      `No se recibió un resultado válido de ${providerName}. Revisa la configuración del motor o prueba otra fotografía.`,
-      502,
-    );
-  }
+export function status(env: EngineEnv) {
+  return Response.json(
+    {
+      configured: !!(env.GEMINI_API_KEY || env.OPENAI_API_KEY),
+      provider: env.GEMINI_API_KEY ? "Gemini" : "OpenAI",
+      model: env.GEMINI_API_KEY
+        ? env.GEMINI_MODEL || "gemini-2.5-flash"
+        : env.OPENAI_MODEL || "gpt-4o",
+      requiresToken: !!env.ANALYSIS_ACCESS_TOKEN,
+    },
+    { headers },
+  );
 }
+
+const requests = new Map<
+  string,
+  { time: number; count: number }
