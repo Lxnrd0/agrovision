@@ -42,6 +42,13 @@ import {
 import { summary } from "@/lib/metrics";
 import { exportSimpleCsv, exportPdf } from "@/lib/exports";
 import { validateRecord } from "@/lib/tracking";
+import {
+  isCloudConfigured,
+  migrateLocalRecordsToCloud,
+  mergeBackupIntoCloud,
+  mutateCloudRecords,
+  readCloudRecords,
+} from "@/lib/cloud";
 
 import AnalysisPanel from "./analysis-panel";
 import History from "./history";
@@ -110,7 +117,13 @@ function getClientId() {
   }
 }
 
-export default function Dashboard() {
+type DashboardProps = {
+  userEmail?: string;
+  onLogout?: () => void;
+};
+
+export default function Dashboard({ userEmail, onLogout }: DashboardProps) {
+  const cloudMode = isCloudConfigured();
   const [view, setView] = useState<View>("analysis");
   const [records, setRecords] = useState<FieldRecord[]>([]);
   const [ready, setReady] = useState(false);
@@ -176,12 +189,17 @@ export default function Dashboard() {
   useEffect(() => {
     mounted.current = true;
 
-    readRecords()
-      .then(async (saved) => {
-        const initial = saved === undefined ? demoRecords : saved;
-
-        if (saved === undefined) {
-          await writeRecords(initial);
+    async function initialiseStorage() {
+      try {
+        let initial: FieldRecord[];
+        if (cloudMode) {
+          // Importa observaciones reales de este navegador una sola vez por ID,
+          // y excluye los registros demostrativos del proyecto original.
+          initial = await migrateLocalRecordsToCloud();
+        } else {
+          const saved = await readRecords();
+          initial = saved === undefined ? demoRecords : saved;
+          if (saved === undefined) await writeRecords(initial);
         }
 
         if (mounted.current) {
@@ -189,16 +207,21 @@ export default function Dashboard() {
           setReady(true);
           setLastSync(currentTime());
         }
-      })
-      .catch(() => {
+      } catch (error) {
         if (!mounted.current) return;
-
         setReady(false);
         notify(
-          "No se pudo abrir el almacenamiento local. Revisa los permisos del navegador.",
+          error instanceof Error
+            ? `No se pudo cargar la bitácora: ${error.message}`
+            : cloudMode
+              ? "No se pudo conectar con la bitácora en la nube. Revisa tu conexión e inicia sesión nuevamente."
+              : "No se pudo abrir el almacenamiento local. Revisa los permisos del navegador.",
           true,
         );
-      });
+      }
+    }
+
+    void initialiseStorage();
 
     try {
       if (localStorage.getItem("agrovision-theme") === "light") {
@@ -210,18 +233,24 @@ export default function Dashboard() {
 
     const updateConnection = () => {
       setOnline(navigator.onLine);
-
       if (navigator.onLine) {
         void refreshEngine();
+        if (cloudMode) {
+          void readCloudRecords().then((saved) => {
+            if (mounted.current) {
+              setRecords(saved);
+              setLastSync(currentTime());
+            }
+          }).catch(() => {});
+        }
       }
     };
 
     window.addEventListener("online", updateConnection);
     window.addEventListener("offline", updateConnection);
 
-    if ("BroadcastChannel" in window) {
+    if (!cloudMode && "BroadcastChannel" in window) {
       channel.current = new BroadcastChannel("agrovision-records");
-
       channel.current.onmessage = () => {
         readRecords()
           .then((saved) => {
@@ -232,6 +261,25 @@ export default function Dashboard() {
           })
           .catch(() => {});
       };
+    }
+
+    // Polling ligero para que las modificaciones de los otros integrantes
+    // aparezcan también en dispositivos distintos sin tener que recargar.
+    let cloudPoll: number | undefined;
+    if (cloudMode) {
+      cloudPoll = window.setInterval(() => {
+        if (!navigator.onLine || document.visibilityState === "hidden") return;
+        void readCloudRecords()
+          .then((saved) => {
+            if (mounted.current) {
+              setRecords(saved);
+              setLastSync(currentTime());
+            }
+          })
+          .catch(() => {
+            // Evita interrumpir el uso si una comprobación periódica falla.
+          });
+      }, 12000);
     }
 
     void refreshEngine();
@@ -248,9 +296,10 @@ export default function Dashboard() {
       window.removeEventListener("online", updateConnection);
       window.removeEventListener("offline", updateConnection);
       channel.current?.close();
+      if (cloudPoll !== undefined) window.clearInterval(cloudPoll);
       abort.current?.abort();
     };
-  }, [notify, refreshEngine]);
+  }, [cloudMode, notify, refreshEngine]);
 
   useEffect(() => {
     document.documentElement.classList.toggle("light", !dark);
@@ -261,7 +310,8 @@ export default function Dashboard() {
   }, [dark]);
 
   async function save(record: FieldRecord) {
-    const next = await mutateRecords((rows) => {
+    const mutate = cloudMode ? mutateCloudRecords : mutateRecords;
+    const next = await mutate((rows) => {
       validateRecord(record, rows);
       return [record, ...rows];
     });
@@ -274,7 +324,8 @@ export default function Dashboard() {
   }
 
   async function saveEdit(record: FieldRecord) {
-    const next = await mutateRecords((rows) => {
+    const mutate = cloudMode ? mutateCloudRecords : mutateRecords;
+    const next = await mutate((rows) => {
       if (!rows.some((item) => item.id === record.id)) {
         throw new Error(
           "La observación ya no existe. Actualiza la bitácora.",
@@ -301,7 +352,8 @@ export default function Dashboard() {
     if (!remove) return;
 
     try {
-      const next = await mutateRecords((rows) =>
+      const mutate = cloudMode ? mutateCloudRecords : mutateRecords;
+      const next = await mutate((rows) =>
         rows.filter((record) => record.id !== remove.id),
       );
 
@@ -584,13 +636,13 @@ export default function Dashboard() {
         <div className="sidebar-bottom">
           <div className="local-card">
             <span className="local-icon">
-              <HardDrive size={19} />
+              {cloudMode ? <Cloud size={19} /> : <HardDrive size={19} />}
             </span>
-            <strong>Almacenamiento local</strong>
-            <p>Tus registros se guardan en este navegador.</p>
+            <strong>{cloudMode ? "Bitácora en la nube" : "Almacenamiento local"}</strong>
+            <p>{cloudMode ? "Los registros se comparten con el equipo en todos los dispositivos." : "Tus registros se guardan solo en este navegador."}</p>
             <div>
               <span className="status-dot" />
-              Almacenamiento local
+              {cloudMode ? "Sincronización activa" : "Solo este dispositivo"}
             </div>
           </div>
 
@@ -664,7 +716,13 @@ export default function Dashboard() {
               {dark ? <Sun size={19} /> : <Moon size={19} />}
             </button>
 
-            <span className="profile-avatar">AG</span>
+            {userEmail && (
+            <>
+              <span className="account-email" title={userEmail}>{userEmail}</span>
+              <button type="button" className="logout-button" onClick={onLogout} title="Cerrar sesión">Salir</button>
+            </>
+          )}
+          {!userEmail && <span className="profile-avatar">AG</span>}
           </div>
         </header>
 
@@ -804,10 +862,22 @@ export default function Dashboard() {
               records={records}
               notify={notify}
               onRestored={(next) => {
-                setRecords(next);
-                setLastSync(currentTime());
-                channel.current?.postMessage("changed");
-                setView("history");
+                void (async () => {
+                  try {
+                    const restored = cloudMode
+                      ? await mergeBackupIntoCloud(next)
+                      : next;
+                    setRecords(restored);
+                    setLastSync(currentTime());
+                    channel.current?.postMessage("changed");
+                    setView("history");
+                    notify(cloudMode
+                      ? "Respaldo integrado y sincronizado con la nube."
+                      : "Respaldo restaurado en este dispositivo.");
+                  } catch (error) {
+                    notify(error instanceof Error ? error.message : "No se pudo sincronizar el respaldo.", true);
+                  }
+                })();
               }}
             />
           )}
@@ -817,7 +887,7 @@ export default function Dashboard() {
               {online ? <Cloud size={15} /> : <WifiOff size={15} />}
               {" "}
               {lastSync
-                ? `Guardado local · ${lastSync}`
+                ? `${cloudMode ? "Sincronizado en la nube" : "Guardado local"} · ${lastSync}`
                 : "Preparando bitácora"}
             </span>
           </div>
