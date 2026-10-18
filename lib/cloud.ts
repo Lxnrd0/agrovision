@@ -388,3 +388,55 @@ export async function mergeBackupIntoCloud(incoming: FieldRecord[]) {
     return [...byId.values()];
   });
 }
+
+
+/** Sends a Supabase password-recovery email to the supplied same-origin redirect. */
+export async function cloudRequestPasswordReset(email: string, redirectTo: string): Promise<void> {
+  ensureCloudConfigured();
+  const cleanedEmail = email.trim();
+  if (!cleanedEmail) throw new Error("Escribe el correo asociado a tu cuenta.");
+
+  let redirectUrl: URL;
+  try {
+    redirectUrl = new URL(redirectTo);
+  } catch {
+    throw new Error("La dirección de recuperación no es válida.");
+  }
+  if (typeof window !== "undefined" && redirectUrl.origin !== window.location.origin) {
+    throw new Error("La dirección de recuperación debe pertenecer a este sitio.");
+  }
+  if (redirectUrl.protocol !== "https:" && redirectUrl.hostname !== "localhost") {
+    throw new Error("La dirección de recuperación debe usar HTTPS.");
+  }
+
+  const endpoint = new URL(`${SUPABASE_URL}/auth/v1/recover`);
+  endpoint.searchParams.set("redirect_to", redirectUrl.toString());
+  const response = await fetch(endpoint.toString(), {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify({ email: cleanedEmail }),
+    cache: "no-store",
+  });
+  const data = await responseJson(response);
+  if (!response.ok) {
+    throw new Error(parseErrorMessage(data, "No se pudo enviar el correo de recuperación. Inténtalo nuevamente."));
+  }
+}
+
+/** Updates the account password using the temporary recovery access token. */
+export async function cloudUpdatePassword(accessToken: string, newPassword: string): Promise<void> {
+  ensureCloudConfigured();
+  if (!accessToken) throw new Error("El enlace de recuperación no es válido o ha caducado. Solicita uno nuevo.");
+  if (newPassword.length < 8) throw new Error("La contraseña debe tener al menos 8 caracteres.");
+
+  const response = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+    method: "PUT",
+    headers: authHeaders(accessToken),
+    body: JSON.stringify({ password: newPassword }),
+    cache: "no-store",
+  });
+  const data = await responseJson(response);
+  if (!response.ok) {
+    throw new Error(parseErrorMessage(data, "No se pudo actualizar la contraseña. Solicita un enlace nuevo."));
+  }
+}
