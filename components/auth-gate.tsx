@@ -26,6 +26,24 @@ import {
 
 type Screen = "loading" | "login" | "app" | "local" | "setup" | "recovery" | "reset";
 
+// Use the official domain for production and the stable branch alias for Preview.
+// This prevents password-reset emails from pointing to a per-deployment Vercel URL
+// that may be protected or disappear after another deployment.
+function getPasswordRecoveryRedirectUrl() {
+  if (typeof window === "undefined") return "https://agrovision-lab.vercel.app/";
+
+  const hostname = window.location.hostname.toLowerCase();
+  if (hostname === "agrovision-lab.vercel.app") {
+    return "https://agrovision-lab.vercel.app/";
+  }
+
+  if (hostname === "localhost" || hostname === "127.0.0.1") {
+    return `${window.location.origin}/`;
+  }
+
+  return "https://agrovision-git-recuperacion-contrasena-leochegne2-7800.vercel.app/";
+}
+
 export default function AuthGate() {
   const [screen, setScreen] = useState<Screen>(isCloudConfigured() ? "loading" : "setup");
   const [session, setSession] = useState<CloudSession | null>(null);
@@ -50,6 +68,23 @@ export default function AuthGate() {
     const hash = new URLSearchParams(window.location.hash.replace(/^#/, ""));
     const recoveryType = hash.get("type");
     const recoveryToken = hash.get("access_token");
+    const authErrorCode = hash.get("error_code");
+    const authErrorDescription = hash.get("error_description");
+
+    // Show a useful message for an invalid/expired recovery link instead of
+    // silently falling through to the normal login screen.
+    if (authErrorCode || authErrorDescription) {
+      window.history.replaceState({}, document.title, window.location.pathname + window.location.search);
+      const description = authErrorDescription?.replace(/\+/g, " ");
+      setError(
+        authErrorCode === "otp_expired"
+          ? "El enlace de recuperación caducó o ya se utilizó. Solicita un enlace nuevo."
+          : description || "No se pudo validar el enlace. Solicita uno nuevo."
+      );
+      setScreen("login");
+      return;
+    }
+
     if (recoveryType === "recovery") {
       window.history.replaceState({}, document.title, window.location.pathname + window.location.search);
       if (recoveryToken) {
@@ -116,7 +151,7 @@ export default function AuthGate() {
     setError("");
     setMessage("");
     try {
-      await cloudRequestPasswordReset(email, `${window.location.origin}/`);
+      await cloudRequestPasswordReset(email, getPasswordRecoveryRedirectUrl());
       setMessage("Si existe una cuenta asociada a ese correo, recibirás un enlace para restablecer la contraseña. Revisa también la carpeta de spam.");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "No se pudo solicitar la recuperación. Inténtalo nuevamente.");
