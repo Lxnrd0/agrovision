@@ -390,22 +390,47 @@ export async function mergeBackupIntoCloud(incoming: FieldRecord[]) {
 }
 
 
-/** Sends a Supabase password-recovery email to the supplied same-origin redirect. */
+/**
+ * Sends a Supabase password-recovery email.
+ * Production redirects to the public production site. Vercel Preview URLs
+ * for this project redirect to its stable, unprotected recovery-preview alias.
+ */
 export async function cloudRequestPasswordReset(email: string, redirectTo: string): Promise<void> {
   ensureCloudConfigured();
   const cleanedEmail = email.trim();
   if (!cleanedEmail) throw new Error("Escribe el correo asociado a tu cuenta.");
 
-  let redirectUrl: URL;
+  let requestedUrl: URL;
   try {
-    redirectUrl = new URL(redirectTo);
+    requestedUrl = new URL(redirectTo);
   } catch {
     throw new Error("La dirección de recuperación no es válida.");
   }
-  if (typeof window !== "undefined" && redirectUrl.origin !== window.location.origin) {
-    throw new Error("La dirección de recuperación debe pertenecer a este sitio.");
+
+  const productionOrigin = "https://agrovision-lab.vercel.app";
+  const stablePreviewOrigin = "https://agrovision-git-recuperacion-contrasena-leochegne2-7800.vercel.app";
+  const currentOrigin = typeof window !== "undefined" ? window.location.origin : requestedUrl.origin;
+  const currentUrl = new URL(currentOrigin);
+  const isLocalDevelopment =
+    (currentUrl.hostname === "localhost" || currentUrl.hostname === "127.0.0.1") &&
+    currentUrl.protocol === "http:";
+  const isThisProjectPreview =
+    currentUrl.protocol === "https:" &&
+    /^agrovision-[a-z0-9-]+-leochegne2-7800\.vercel\.app$/i.test(currentUrl.hostname);
+
+  let redirectUrl: URL;
+  if (currentOrigin === productionOrigin) {
+    redirectUrl = new URL(`${productionOrigin}/`);
+  } else if (currentOrigin === stablePreviewOrigin || isThisProjectPreview) {
+    // Use the stable preview alias, not a deployment-specific URL that may be protected.
+    redirectUrl = new URL(`${stablePreviewOrigin}/`);
+  } else if (isLocalDevelopment && requestedUrl.origin === currentOrigin) {
+    redirectUrl = requestedUrl;
+  } else {
+    throw new Error("La dirección de recuperación no corresponde a un dominio autorizado de AgroVision.");
   }
-  if (redirectUrl.protocol !== "https:" && redirectUrl.hostname !== "localhost") {
+
+  if (redirectUrl.protocol !== "https:" && !isLocalDevelopment) {
     throw new Error("La dirección de recuperación debe usar HTTPS.");
   }
 
