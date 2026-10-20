@@ -1,48 +1,11 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
-import {
-  ArrowLeft,
-  Cloud,
-  KeyRound,
-  LoaderCircle,
-  LockKeyhole,
-  LogIn,
-  Mail,
-  Sprout,
-  UserPlus,
-} from "lucide-react";
+import { ArrowLeft, Cloud, KeyRound, LoaderCircle, LockKeyhole, LogIn, Mail, Sprout, UserPlus } from "lucide-react";
 import Dashboard from "./dashboard";
-import {
-  cloudRequestPasswordReset,
-  cloudSignIn,
-  cloudSignOut,
-  cloudSignUp,
-  cloudUpdatePassword,
-  getCloudSession,
-  isCloudConfigured,
-  type CloudSession,
-} from "@/lib/cloud";
+import { cloudRequestPasswordReset, cloudSignIn, cloudSignOut, cloudSignUp, cloudUpdatePassword, getCloudSession, isCloudConfigured, type CloudSession } from "@/lib/cloud";
 
 type Screen = "loading" | "login" | "app" | "local" | "setup" | "recovery" | "reset";
-
-// Use the official domain for production and the stable branch alias for Preview.
-// This prevents password-reset emails from pointing to a per-deployment Vercel URL
-// that may be protected or disappear after another deployment.
-function getPasswordRecoveryRedirectUrl() {
-  if (typeof window === "undefined") return "https://agrovision-lab.vercel.app/";
-
-  const hostname = window.location.hostname.toLowerCase();
-  if (hostname === "agrovision-lab.vercel.app") {
-    return "https://agrovision-lab.vercel.app/";
-  }
-
-  if (hostname === "localhost" || hostname === "127.0.0.1") {
-    return `${window.location.origin}/`;
-  }
-
-  return "https://agrovision-git-recuperacion-contrasena-leochegne2-7800.vercel.app/";
-}
 
 export default function AuthGate() {
   const [screen, setScreen] = useState<Screen>(isCloudConfigured() ? "loading" : "setup");
@@ -62,36 +25,21 @@ export default function AuthGate() {
       setScreen("setup");
       return;
     }
-
-    // Supabase returns the recovery access token in the URL fragment.
-    // Read it once, then remove it from the visible URL.
+    // Supabase returns recovery credentials in the URL fragment (#...).
+    // Detect and capture them before checking an existing local session.
     const hash = new URLSearchParams(window.location.hash.replace(/^#/, ""));
     const recoveryType = hash.get("type");
     const recoveryToken = hash.get("access_token");
-    const authErrorCode = hash.get("error_code");
-    const authErrorDescription = hash.get("error_description");
-
-    // Show a useful message for an invalid/expired recovery link instead of
-    // silently falling through to the normal login screen.
-    if (authErrorCode || authErrorDescription) {
+    const recoveryError = hash.get("error_description") || hash.get("error_code") || hash.get("error");
+    if (recoveryType === "recovery" || recoveryError) {
       window.history.replaceState({}, document.title, window.location.pathname + window.location.search);
-      const description = authErrorDescription?.replace(/\+/g, " ");
-      setError(
-        authErrorCode === "otp_expired"
-          ? "El enlace de recuperación caducó o ya se utilizó. Solicita un enlace nuevo."
-          : description || "No se pudo validar el enlace. Solicita uno nuevo."
-      );
-      setScreen("login");
-      return;
-    }
-
-    if (recoveryType === "recovery") {
-      window.history.replaceState({}, document.title, window.location.pathname + window.location.search);
-      if (recoveryToken) {
+      if (recoveryType === "recovery" && recoveryToken) {
         setResetAccessToken(recoveryToken);
         setScreen("reset");
       } else {
-        setError("El enlace de recuperación no es válido o ha caducado. Solicita uno nuevo.");
+        setError(recoveryError
+          ? `El enlace de recuperación no es válido o ha caducado (${recoveryError.replace(/\+/g, " ")}). Solicita uno nuevo.`
+          : "El enlace de recuperación no es válido o ha caducado. Solicita uno nuevo.");
         setScreen("login");
       }
       return;
@@ -151,7 +99,8 @@ export default function AuthGate() {
     setError("");
     setMessage("");
     try {
-      await cloudRequestPasswordReset(email, getPasswordRecoveryRedirectUrl());
+      // Redirect back to the exact origin where the request was made.
+      await cloudRequestPasswordReset(email, `${window.location.origin}/`);
       setMessage("Si existe una cuenta asociada a ese correo, recibirás un enlace para restablecer la contraseña. Revisa también la carpeta de spam.");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "No se pudo solicitar la recuperación. Inténtalo nuevamente.");
@@ -189,20 +138,6 @@ export default function AuthGate() {
     }
   }
 
-  async function logout() {
-    setBusy(true);
-    try {
-      await cloudSignOut();
-    } finally {
-      setSession(null);
-      setPassword("");
-      setError("");
-      setMessage("");
-      setScreen("login");
-      setBusy(false);
-    }
-  }
-
   function goToLogin() {
     setScreen("login");
     setSignup(false);
@@ -213,19 +148,31 @@ export default function AuthGate() {
     setResetAccessToken("");
   }
 
+  async function logout() {
+    setBusy(true);
+    try { await cloudSignOut(); } finally {
+      setSession(null);
+      setPassword("");
+      setError("");
+      setMessage("");
+      setScreen("login");
+      setBusy(false);
+    }
+  }
+
   if (screen === "local") return <Dashboard />;
 
   if (screen === "setup") {
     return (
       <div className="auth-page">
         <section className="auth-card auth-setup-card">
-          <div className="auth-brand"><span className="auth-brand-mark"><Sprout size={26} /></span><span>agro<span>vision</span></span></div>
+          <div className="auth-brand"><span className="auth-brand-mark"><Sprout size={28} /></span><span>agro<span>vision</span></span></div>
           <span className="auth-kicker"><Cloud size={15} /> TU BITÁCORA EN LA NUBE</span>
           <h1>Activa tu cuenta de AgroVision</h1>
           <p>Configura Supabase y las variables de entorno para guardar tu bitácora en tu cuenta y recuperarla desde cualquier dispositivo.</p>
           <div className="auth-setup-list">
             <div><span>1</span><p>Configura el proyecto de Supabase.</p></div>
-            <div><span>2</span><p>Ejecuta la migración de cuentas personales en Supabase.</p></div>
+            <div><span>2</span><p>Ejecuta la migración del archivo <code>supabase/personal-account.sql</code>.</p></div>
             <div><span>3</span><p>Configura las variables de entorno en Vercel y vuelve a desplegar.</p></div>
           </div>
           <button className="auth-primary" type="button" onClick={() => setScreen("local")}>Continuar solo en este dispositivo</button>
@@ -250,7 +197,7 @@ export default function AuthGate() {
     return (
       <div className="auth-page">
         <section className="auth-card">
-          <div className="auth-brand"><span className="auth-brand-mark"><Sprout size={26} /></span><span>agro<span>vision</span></span></div>
+          <div className="auth-brand"><span className="auth-brand-mark"><Sprout size={28} /></span><span>agro<span>vision</span></span></div>
           <span className="auth-kicker"><Mail size={15} /> RECUPERACIÓN SEGURA</span>
           <h1>Recupera tu contraseña</h1>
           <p>Escribe el correo asociado a tu cuenta. Te enviaremos un enlace para crear una contraseña nueva.</p>
@@ -273,7 +220,7 @@ export default function AuthGate() {
     return (
       <div className="auth-page">
         <section className="auth-card">
-          <div className="auth-brand"><span className="auth-brand-mark"><Sprout size={26} /></span><span>agro<span>vision</span></span></div>
+          <div className="auth-brand"><span className="auth-brand-mark"><Sprout size={28} /></span><span>agro<span>vision</span></span></div>
           <span className="auth-kicker"><KeyRound size={15} /> NUEVA CONTRASEÑA</span>
           <h1>Protege tu cuenta</h1>
           <p>Elige una contraseña nueva de al menos 8 caracteres para volver a acceder a tu bitácora.</p>
@@ -297,7 +244,7 @@ export default function AuthGate() {
   return (
     <div className="auth-page">
       <section className="auth-card">
-        <div className="auth-brand"><span className="auth-brand-mark"><Sprout size={26} /></span><span>agro<span>vision</span></span></div>
+        <div className="auth-brand"><span className="auth-brand-mark"><Sprout size={28} /></span><span>agro<span>vision</span></span></div>
         <span className="auth-kicker"><Cloud size={15} /> CUENTA PERSONAL</span>
         <h1>{signup ? "Crea tu cuenta" : "Bienvenido de nuevo"}</h1>
         <p>{signup ? "Crea una cuenta para guardar tus plantas, fotografías y observaciones en la nube." : "Inicia sesión para recuperar tu bitácora desde tu laptop o celular."}</p>
@@ -310,7 +257,7 @@ export default function AuthGate() {
           </label>
           {!signup && <div className="auth-forgot-row"><button type="button" disabled={busy} onClick={() => { setScreen("recovery"); setError(""); setMessage(""); }}>¿Olvidaste tu contraseña?</button></div>}
           {error && <div className="auth-error" role="alert">{error}</div>}
-          {message && <div className="auth-message" role="status">{message}</div>}
+          {message && <div className="auth-message">{message}</div>}
           <button className="auth-primary" type="submit" disabled={busy}>{busy ? <LoaderCircle className="auth-spinner" size={18} /> : signup ? <UserPlus size={18} /> : <LogIn size={18} />}{signup ? "Crear cuenta" : "Iniciar sesión"}</button>
         </form>
         <div className="auth-switch">
