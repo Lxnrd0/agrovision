@@ -247,7 +247,7 @@ export default function AuthGate() {
         <div className="auth-brand"><span className="auth-brand-mark"><Sprout size={28} /></span><span>agro<span>vision</span></span></div>
         <span className="auth-kicker"><Cloud size={15} /> CUENTA PERSONAL</span>
         <h1>{signup ? "Crea tu cuenta" : "Bienvenido de nuevo"}</h1>
-        <p>{signup ? "Crea una cuenta para guardar tus plantas, fotografías y observaciones en la nube." : "Inicia sesión para recuperar tu bitácora desde tu laptop o celular."}</p>
+        <p>{signup ? "Crea una cuenta para guardar tus plantas, fotografías y observaciones en la nube." : "Accede a tu bitácora de cultivo desde cualquier dispositivo."}</p>
         <form className="auth-form" onSubmit={submitAuth}>
           <label>Correo electrónico
             <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="tu@correo.com" required autoComplete="email" />
@@ -261,7 +261,7 @@ export default function AuthGate() {
           <button className="auth-primary" type="submit" disabled={busy}>{busy ? <LoaderCircle className="auth-spinner" size={18} /> : signup ? <UserPlus size={18} /> : <LogIn size={18} />}{signup ? "Crear cuenta" : "Iniciar sesión"}</button>
         </form>
         <div className="auth-switch">
-          <span>{signup ? "¿Ya tienes cuenta?" : "¿Es tu primera vez?"}</span>
+          <span>{signup ? "¿Ya tienes cuenta?" : "¿Aún no tienes una cuenta?"}</span>
           <button type="button" disabled={busy} onClick={() => { setSignup((value) => !value); setError(""); setMessage(""); }}>{signup ? "Inicia sesión" : "Crear cuenta"}</button>
         </div>
         <div className="auth-security"><LockKeyhole size={14} /> Cada cuenta solo puede ver y modificar sus propias bitácoras.</div>
