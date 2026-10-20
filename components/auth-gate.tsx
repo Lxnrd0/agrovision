@@ -1,11 +1,11 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
-import { Cloud, LoaderCircle, LockKeyhole, LogIn, Sprout, UserPlus } from "lucide-react";
+import { ArrowLeft, Cloud, KeyRound, LoaderCircle, LockKeyhole, LogIn, Mail, Sprout, UserPlus } from "lucide-react";
 import Dashboard from "./dashboard";
-import { cloudSignIn, cloudSignOut, cloudSignUp, getCloudSession, isCloudConfigured, type CloudSession } from "@/lib/cloud";
+import { cloudRequestPasswordReset, cloudSignIn, cloudSignOut, cloudSignUp, cloudUpdatePassword, getCloudSession, isCloudConfigured, type CloudSession } from "@/lib/cloud";
 
-type Screen = "loading" | "login" | "app" | "local" | "setup";
+type Screen = "loading" | "login" | "app" | "local" | "setup" | "recovery" | "reset";
 
 export default function AuthGate() {
   const [screen, setScreen] = useState<Screen>(isCloudConfigured() ? "loading" : "setup");
@@ -13,6 +13,9 @@ export default function AuthGate() {
   const [signup, setSignup] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [resetAccessToken, setResetAccessToken] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -22,6 +25,26 @@ export default function AuthGate() {
       setScreen("setup");
       return;
     }
+    // Supabase returns recovery credentials in the URL fragment (#...).
+    // Detect and capture them before checking an existing local session.
+    const hash = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+    const recoveryType = hash.get("type");
+    const recoveryToken = hash.get("access_token");
+    const recoveryError = hash.get("error_description") || hash.get("error_code") || hash.get("error");
+    if (recoveryType === "recovery" || recoveryError) {
+      window.history.replaceState({}, document.title, window.location.pathname + window.location.search);
+      if (recoveryType === "recovery" && recoveryToken) {
+        setResetAccessToken(recoveryToken);
+        setScreen("reset");
+      } else {
+        setError(recoveryError
+          ? `El enlace de recuperación no es válido o ha caducado (${recoveryError.replace(/\+/g, " ")}). Solicita uno nuevo.`
+          : "El enlace de recuperación no es válido o ha caducado. Solicita uno nuevo.");
+        setScreen("login");
+      }
+      return;
+    }
+
     let alive = true;
     getCloudSession()
       .then((active) => {
@@ -70,6 +93,61 @@ export default function AuthGate() {
     }
   }
 
+  async function submitRecovery(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy(true);
+    setError("");
+    setMessage("");
+    try {
+      // Redirect back to the exact origin where the request was made.
+      await cloudRequestPasswordReset(email, `${window.location.origin}/`);
+      setMessage("Si existe una cuenta asociada a ese correo, recibirás un enlace para restablecer la contraseña. Revisa también la carpeta de spam.");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "No se pudo solicitar la recuperación. Inténtalo nuevamente.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function submitNewPassword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError("");
+    setMessage("");
+    if (newPassword.length < 8) {
+      setError("La contraseña debe tener al menos 8 caracteres.");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setError("Las contraseñas no coinciden.");
+      return;
+    }
+    setBusy(true);
+    try {
+      await cloudUpdatePassword(resetAccessToken, newPassword);
+      setResetAccessToken("");
+      setNewPassword("");
+      setConfirmPassword("");
+      setPassword("");
+      setSignup(false);
+      setScreen("login");
+      setMessage("Contraseña actualizada. Ya puedes iniciar sesión con tu nueva contraseña.");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "No se pudo actualizar la contraseña. Solicita un enlace nuevo.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function goToLogin() {
+    setScreen("login");
+    setSignup(false);
+    setError("");
+    setMessage("");
+    setNewPassword("");
+    setConfirmPassword("");
+    setResetAccessToken("");
+  }
+
   async function logout() {
     setBusy(true);
     try { await cloudSignOut(); } finally {
@@ -115,13 +193,61 @@ export default function AuthGate() {
     </>;
   }
 
+  if (screen === "recovery") {
+    return (
+      <div className="auth-page">
+        <section className="auth-card">
+          <div className="auth-brand"><span className="auth-brand-mark"><Sprout size={28} /></span><span>agro<span>vision</span></span></div>
+          <span className="auth-kicker"><Mail size={15} /> RECUPERACIÓN SEGURA</span>
+          <h1>Recupera tu contraseña</h1>
+          <p>Escribe el correo asociado a tu cuenta. Te enviaremos un enlace para crear una contraseña nueva.</p>
+          <form className="auth-form" onSubmit={submitRecovery}>
+            <label>Correo electrónico
+              <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="tu@correo.com" required autoComplete="email" />
+            </label>
+            {error && <div className="auth-error" role="alert">{error}</div>}
+            {message && <div className="auth-message" role="status">{message}</div>}
+            <button className="auth-primary" type="submit" disabled={busy}>{busy ? <LoaderCircle className="auth-spinner" size={18} /> : <Mail size={18} />}Enviar enlace de recuperación</button>
+          </form>
+          <button className="auth-text-button" type="button" disabled={busy} onClick={goToLogin}><ArrowLeft size={14} /> Volver al inicio de sesión</button>
+          <div className="auth-security"><LockKeyhole size={14} /> Por seguridad, el mensaje no confirma si el correo está registrado.</div>
+        </section>
+      </div>
+    );
+  }
+
+  if (screen === "reset") {
+    return (
+      <div className="auth-page">
+        <section className="auth-card">
+          <div className="auth-brand"><span className="auth-brand-mark"><Sprout size={28} /></span><span>agro<span>vision</span></span></div>
+          <span className="auth-kicker"><KeyRound size={15} /> NUEVA CONTRASEÑA</span>
+          <h1>Protege tu cuenta</h1>
+          <p>Elige una contraseña nueva de al menos 8 caracteres para volver a acceder a tu bitácora.</p>
+          <form className="auth-form" onSubmit={submitNewPassword}>
+            <label>Nueva contraseña
+              <input type="password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} placeholder="Mínimo 8 caracteres" required minLength={8} autoComplete="new-password" />
+            </label>
+            <label>Confirmar contraseña
+              <input type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} placeholder="Repite la contraseña" required minLength={8} autoComplete="new-password" />
+            </label>
+            {error && <div className="auth-error" role="alert">{error}</div>}
+            <button className="auth-primary" type="submit" disabled={busy || !resetAccessToken}>{busy ? <LoaderCircle className="auth-spinner" size={18} /> : <KeyRound size={18} />}Guardar nueva contraseña</button>
+          </form>
+          <button className="auth-text-button" type="button" disabled={busy} onClick={goToLogin}><ArrowLeft size={14} /> Volver al inicio de sesión</button>
+          {!resetAccessToken && <div className="auth-error" role="alert">El enlace no es válido o ha caducado. Solicita otro desde la pantalla de inicio de sesión.</div>}
+        </section>
+      </div>
+    );
+  }
+
   return (
     <div className="auth-page">
       <section className="auth-card">
         <div className="auth-brand"><span className="auth-brand-mark"><Sprout size={28} /></span><span>agro<span>vision</span></span></div>
         <span className="auth-kicker"><Cloud size={15} /> CUENTA PERSONAL</span>
         <h1>{signup ? "Crea tu cuenta" : "Bienvenido de nuevo"}</h1>
-        <p>{signup ? "Crea una cuenta para guardar tus plantas, fotografías y observaciones en la nube." : "Inicia sesión para recuperar tu bitácora desde tu laptop o celular."}</p>
+        <p>{signup ? "Crea una cuenta para guardar tus plantas, fotografías y observaciones en la nube." : "Accede a tu bitácora de cultivo desde cualquier dispositivo."}</p>
         <form className="auth-form" onSubmit={submitAuth}>
           <label>Correo electrónico
             <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="tu@correo.com" required autoComplete="email" />
@@ -129,12 +255,13 @@ export default function AuthGate() {
           <label>Contraseña
             <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder={signup ? "Mínimo 8 caracteres" : "Tu contraseña"} required minLength={signup ? 8 : 6} autoComplete={signup ? "new-password" : "current-password"} />
           </label>
-          {error && <div className="auth-error">{error}</div>}
+          {!signup && <div className="auth-forgot-row"><button type="button" disabled={busy} onClick={() => { setScreen("recovery"); setError(""); setMessage(""); }}>¿Olvidaste tu contraseña?</button></div>}
+          {error && <div className="auth-error" role="alert">{error}</div>}
           {message && <div className="auth-message">{message}</div>}
           <button className="auth-primary" type="submit" disabled={busy}>{busy ? <LoaderCircle className="auth-spinner" size={18} /> : signup ? <UserPlus size={18} /> : <LogIn size={18} />}{signup ? "Crear cuenta" : "Iniciar sesión"}</button>
         </form>
         <div className="auth-switch">
-          <span>{signup ? "¿Ya tienes cuenta?" : "¿Es tu primera vez?"}</span>
+          <span>{signup ? "¿Ya tienes cuenta?" : "¿Aún no tienes una cuenta?"}</span>
           <button type="button" disabled={busy} onClick={() => { setSignup((value) => !value); setError(""); setMessage(""); }}>{signup ? "Inicia sesión" : "Crear cuenta"}</button>
         </div>
         <div className="auth-security"><LockKeyhole size={14} /> Cada cuenta solo puede ver y modificar sus propias bitácoras.</div>
