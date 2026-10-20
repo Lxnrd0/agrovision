@@ -434,15 +434,39 @@ export async function analyze(
       { headers },
     );
   } catch (error) {
-    const providerName =
-      provider === "gemini" ? "Gemini" : "OpenAI";
+    const providerName = provider === "gemini" ? "Gemini" : "OpenAI";
+    const errorInfo =
+      typeof error === "object" && error !== null
+        ? (error as {
+            status?: unknown;
+            code?: unknown;
+            message?: unknown;
+            response?: { status?: unknown };
+          })
+        : {};
 
-    const upstreamStatus =
-      typeof error === "object" &&
-      error !== null &&
-      "status" in error
-        ? Number(error.status)
-        : null;
+    const statusValue =
+      typeof errorInfo.status === "number"
+        ? errorInfo.status
+        : typeof errorInfo.response?.status === "number"
+          ? errorInfo.response.status
+          : null;
+    const upstreamStatus = statusValue === null ? null : Number(statusValue);
+    const errorName = error instanceof Error ? error.name : "UnknownError";
+    const rawMessage = error instanceof Error ? error.message : String(error);
+    // Keep diagnostics useful while avoiding accidental API-key disclosure.
+    const safeMessage = rawMessage
+      .replace(/AIza[0-9A-Za-z_-]{20,}/g, "[REDACTED_API_KEY]")
+      .slice(0, 400);
+
+    console.error("[AgroVision] Falló el análisis del proveedor", {
+      provider,
+      model,
+      status: upstreamStatus,
+      name: errorName,
+      code: typeof errorInfo.code === "string" ? errorInfo.code : undefined,
+      message: safeMessage,
+    });
 
     if (upstreamStatus === 429) {
       return fail(
@@ -452,10 +476,7 @@ export async function analyze(
       );
     }
 
-    if (
-      upstreamStatus === 401 ||
-      upstreamStatus === 403
-    ) {
+    if (upstreamStatus === 401 || upstreamStatus === 403) {
       return fail(
         "La clave del motor no es válida o no tiene permisos. Revisa su configuración en el servidor.",
         401,
@@ -471,12 +492,25 @@ export async function analyze(
       );
     }
 
+    if (upstreamStatus === 400) {
+      return fail(
+        `El proveedor ${providerName} rechazó la solicitud. Revisa los Runtime Logs para ver el detalle técnico.`,
+        502,
+        "PROVIDER_BAD_REQUEST",
+      );
+    }
+
+    if (error instanceof SyntaxError || error instanceof z.ZodError) {
+      return fail(
+        `${providerName} devolvió una respuesta que no coincide con el formato esperado. Prueba otra fotografía; si persiste, revisa los Runtime Logs.`,
+        502,
+        "INVALID_MODEL_RESPONSE",
+      );
+    }
+
     if (
       error instanceof Error &&
-      (
-        error.name === "TimeoutError" ||
-        error.name === "AbortError"
-      )
+      (error.name === "TimeoutError" || error.name === "AbortError")
     ) {
       return fail(
         "El análisis tardó demasiado. Inténtalo nuevamente.",
@@ -486,8 +520,9 @@ export async function analyze(
     }
 
     return fail(
-      `No se recibió un resultado válido de ${providerName}. Revisa la configuración del motor o prueba otra fotografía.`,
+      `No se recibió un resultado válido de ${providerName}. Revisa los Runtime Logs del servidor para identificar la causa.`,
       502,
+      "ANALYSIS_PROVIDER_ERROR",
     );
   }
 }
