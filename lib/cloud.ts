@@ -390,47 +390,27 @@ export async function mergeBackupIntoCloud(incoming: FieldRecord[]) {
 }
 
 
-/**
- * Sends a Supabase password-recovery email.
- * Production redirects to the public production site. Vercel Preview URLs
- * for this project redirect to its stable, unprotected recovery-preview alias.
- */
+/** Sends a Supabase password-recovery email back to the same origin. */
 export async function cloudRequestPasswordReset(email: string, redirectTo: string): Promise<void> {
   ensureCloudConfigured();
   const cleanedEmail = email.trim();
   if (!cleanedEmail) throw new Error("Escribe el correo asociado a tu cuenta.");
 
-  let requestedUrl: URL;
+  let redirectUrl: URL;
   try {
-    requestedUrl = new URL(redirectTo);
+    redirectUrl = new URL(redirectTo);
   } catch {
     throw new Error("La dirección de recuperación no es válida.");
   }
 
-  const productionOrigin = "https://agrovision-lab.vercel.app";
-  const stablePreviewOrigin = "https://agrovision-git-recuperacion-contrasena-leochegne2-7800.vercel.app";
-  const currentOrigin = typeof window !== "undefined" ? window.location.origin : requestedUrl.origin;
-  const currentUrl = new URL(currentOrigin);
-  const isLocalDevelopment =
-    (currentUrl.hostname === "localhost" || currentUrl.hostname === "127.0.0.1") &&
-    currentUrl.protocol === "http:";
-  const isThisProjectPreview =
-    currentUrl.protocol === "https:" &&
-    /^agrovision-[a-z0-9-]+-leochegne2-7800\.vercel\.app$/i.test(currentUrl.hostname);
-
-  let redirectUrl: URL;
-  if (currentOrigin === productionOrigin) {
-    redirectUrl = new URL(`${productionOrigin}/`);
-  } else if (currentOrigin === stablePreviewOrigin || isThisProjectPreview) {
-    // Use the stable preview alias, not a deployment-specific URL that may be protected.
-    redirectUrl = new URL(`${stablePreviewOrigin}/`);
-  } else if (isLocalDevelopment && requestedUrl.origin === currentOrigin) {
-    redirectUrl = requestedUrl;
-  } else {
-    throw new Error("La dirección de recuperación no corresponde a un dominio autorizado de AgroVision.");
+  // Never allow a recovery link to redirect to an unrelated site. Preview and
+  // production both work because the form passes window.location.origin.
+  if (typeof window !== "undefined" && redirectUrl.origin !== window.location.origin) {
+    throw new Error("La dirección de recuperación debe pertenecer a este sitio.");
   }
-
-  if (redirectUrl.protocol !== "https:" && !isLocalDevelopment) {
+  const localDevelopment = redirectUrl.protocol === "http:" &&
+    (redirectUrl.hostname === "localhost" || redirectUrl.hostname === "127.0.0.1");
+  if (redirectUrl.protocol !== "https:" && !localDevelopment) {
     throw new Error("La dirección de recuperación debe usar HTTPS.");
   }
 
@@ -448,7 +428,7 @@ export async function cloudRequestPasswordReset(email: string, redirectTo: strin
   }
 }
 
-/** Updates the account password using the temporary recovery access token. */
+/** Updates the password using the temporary recovery access token in the URL fragment. */
 export async function cloudUpdatePassword(accessToken: string, newPassword: string): Promise<void> {
   ensureCloudConfigured();
   if (!accessToken) throw new Error("El enlace de recuperación no es válido o ha caducado. Solicita uno nuevo.");
