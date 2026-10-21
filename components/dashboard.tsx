@@ -578,11 +578,11 @@ export default function Dashboard({ userEmail, onLogout }: DashboardProps) {
           }}
         >
           <span className="brand-mark">
-            <Sprout size={26} />
+            <img src="/terranova-icon.png" alt="" width={36} height={36} />
           </span>
           <span>
-            agro<span>vision</span>
-            <small>SEGUIMIENTO DEL CULTIVO</small>
+            Terra<span>Nova</span>
+            <small>MONITOREO INTELIGENTE DE CULTIVOS</small>
           </span>
         </a>
 
@@ -731,7 +731,7 @@ export default function Dashboard({ userEmail, onLogout }: DashboardProps) {
             <div>
               <div className="page-eyebrow">
                 <span className="mini-line" />
-                {" "}REGISTRO Y SEGUIMIENTO DEL CULTIVO
+                {" "}REGISTRO Y MONITOREO INTELIGENTE DE CULTIVOS
               </div>
               <h1>
                 Monitoreo de rabanito<span>.</span>
