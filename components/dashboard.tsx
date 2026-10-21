@@ -130,6 +130,7 @@ export default function Dashboard({ userEmail, onLogout }: DashboardProps) {
   const [image, setImage] = useState("/radish-sample.jpg");
   const [imageName, setImageName] = useState("Muestra de rabanito");
   const [diagnosis, setDiagnosis] = useState<Diagnosis | null>(null);
+  const [confirmedCrop, setConfirmedCrop] = useState("");
   const [source, setSource] = useState<FieldRecord["source"]>("demo");
   const [mode, setMode] = useState<"demo" | "real">("real");
 
@@ -886,7 +887,7 @@ export default function Dashboard({ userEmail, onLogout }: DashboardProps) {
                 onFile={upload}
                 onAnalyze={analyze}
                 onDemo={demo}
-                onReport={() => setForm("diagnosis")}
+                onReport={(crop) => { setConfirmedCrop(crop); setForm("diagnosis"); }}
               />
             ) : view === "history" ? (
               <History
@@ -975,7 +976,7 @@ export default function Dashboard({ userEmail, onLogout }: DashboardProps) {
           <footer className="main-footer">
             <span>
               <Sprout size={14} />
-              {" "}Seguimiento del cultivo de rabanito
+              {" "}Seguimiento inteligente de cultivos
             </span>
             <span>
               {records.some((record) => record.source === "demo")
@@ -990,6 +991,7 @@ export default function Dashboard({ userEmail, onLogout }: DashboardProps) {
         <ReportForm
           records={records}
           diagnosis={form === "diagnosis" ? diagnosis : null}
+          confirmedCrop={form === "diagnosis" ? confirmedCrop : ""}
           image={form === "diagnosis" ? image : ""}
           source={form === "diagnosis" ? source : "manual"}
           onClose={() => setForm(null)}
