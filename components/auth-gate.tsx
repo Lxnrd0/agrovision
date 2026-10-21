@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
-import { ArrowLeft, Cloud, KeyRound, LoaderCircle, LockKeyhole, LogIn, Mail, Sprout, UserPlus } from "lucide-react";
+import { ArrowLeft, Cloud, KeyRound, LoaderCircle, LockKeyhole, LogIn, Mail, UserPlus } from "lucide-react";
 import Dashboard from "./dashboard";
 import { cloudRequestPasswordReset, cloudSignIn, cloudSignOut, cloudSignUp, cloudUpdatePassword, getCloudSession, isCloudConfigured, type CloudSession } from "@/lib/cloud";
 
@@ -166,9 +166,9 @@ export default function AuthGate() {
     return (
       <div className="auth-page">
         <section className="auth-card auth-setup-card">
-          <div className="auth-brand"><span className="auth-brand-mark"><Sprout size={28} /></span><span>agro<span>vision</span></span></div>
+          <div className="auth-brand"><span className="auth-brand-mark"><img src="/terranova-icon.png" alt="" width={40} height={40} /></span><span>Terra<span>Nova</span></span></div>
           <span className="auth-kicker"><Cloud size={15} /> TU BITÁCORA EN LA NUBE</span>
-          <h1>Activa tu cuenta de AgroVision</h1>
+          <h1>Activa tu cuenta de TerraNova</h1>
           <p>Configura Supabase y las variables de entorno para guardar tu bitácora en tu cuenta y recuperarla desde cualquier dispositivo.</p>
           <div className="auth-setup-list">
             <div><span>1</span><p>Configura el proyecto de Supabase.</p></div>
@@ -188,7 +188,7 @@ export default function AuthGate() {
 
   if (screen === "app" && session) {
     return <>
-      <Dashboard userEmail={session.user.email || "Mi cuenta AgroVision"} onLogout={logout} />
+      <Dashboard userEmail={session.user.email || "Mi cuenta TerraNova"} onLogout={logout} />
       <div className="cloud-toast" role="status"><Cloud size={14} /> Tu bitácora personal está sincronizada</div>
     </>;
   }
@@ -197,7 +197,7 @@ export default function AuthGate() {
     return (
       <div className="auth-page">
         <section className="auth-card">
-          <div className="auth-brand"><span className="auth-brand-mark"><Sprout size={28} /></span><span>agro<span>vision</span></span></div>
+          <div className="auth-brand"><span className="auth-brand-mark"><img src="/terranova-icon.png" alt="" width={40} height={40} /></span><span>Terra<span>Nova</span></span></div>
           <span className="auth-kicker"><Mail size={15} /> RECUPERACIÓN SEGURA</span>
           <h1>Recupera tu contraseña</h1>
           <p>Escribe el correo asociado a tu cuenta. Te enviaremos un enlace para crear una contraseña nueva.</p>
@@ -220,7 +220,7 @@ export default function AuthGate() {
     return (
       <div className="auth-page">
         <section className="auth-card">
-          <div className="auth-brand"><span className="auth-brand-mark"><Sprout size={28} /></span><span>agro<span>vision</span></span></div>
+          <div className="auth-brand"><span className="auth-brand-mark"><img src="/terranova-icon.png" alt="" width={40} height={40} /></span><span>Terra<span>Nova</span></span></div>
           <span className="auth-kicker"><KeyRound size={15} /> NUEVA CONTRASEÑA</span>
           <h1>Protege tu cuenta</h1>
           <p>Elige una contraseña nueva de al menos 8 caracteres para volver a acceder a tu bitácora.</p>
@@ -244,7 +244,7 @@ export default function AuthGate() {
   return (
     <div className="auth-page">
       <section className="auth-card">
-        <div className="auth-brand"><span className="auth-brand-mark"><Sprout size={28} /></span><span>agro<span>vision</span></span></div>
+        <div className="auth-brand"><span className="auth-brand-mark"><img src="/terranova-icon.png" alt="" width={40} height={40} /></span><span>Terra<span>Nova</span></span></div>
         <span className="auth-kicker"><Cloud size={15} /> CUENTA PERSONAL</span>
         <h1>{signup ? "Crea tu cuenta" : "Bienvenido de nuevo"}</h1>
         <p>{signup ? "Crea una cuenta para guardar tus plantas, fotografías y observaciones en la nube." : "Accede a tu bitácora de cultivo desde cualquier dispositivo."}</p>
