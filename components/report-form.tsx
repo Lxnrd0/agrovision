@@ -15,6 +15,7 @@ import { Save, Upload } from "lucide-react";
 type ReportFormProps = {
   records: FieldRecord[];
   diagnosis: Diagnosis | null;
+  confirmedCrop: string;
   image: string;
   source: FieldRecord["source"];
   onClose: () => void;
@@ -57,6 +58,7 @@ function localDate() {
 export default function ReportForm({
   records,
   diagnosis,
+  confirmedCrop,
   image,
   source,
   onClose,
@@ -71,6 +73,7 @@ export default function ReportForm({
 
   const [selectedId, setSelectedId] = useState("");
   const [plantId, setPlantId] = useState("");
+  const [crop, setCrop] = useState(confirmedCrop);
   const [sowingDate, setSowingDate] = useState("");
   const [zone, setZone] = useState("");
   const [fertilizer, setFertilizer] = useState("");
@@ -133,6 +136,7 @@ export default function ReportForm({
     const plant = plants.find((record) => record.id === id);
 
     setPlantId(plant?.plantId ?? "");
+    setCrop(plant?.crop ?? confirmedCrop);
     setSowingDate(plant?.sowingDate ?? "");
     setZone(plant?.zone ?? "");
     setFertilizer(plant?.fertilizer ?? "");
@@ -178,13 +182,14 @@ export default function ReportForm({
       }
 
       if (
+        !crop.trim() ||
         !plantId.trim() ||
         !sowingDate ||
         !zone.trim() ||
         !fertilizer.trim()
       ) {
         throw new Error(
-          "Completa el identificador, la siembra, el lote y el tratamiento.",
+          "Completa el cultivo, identificador, siembra, lote y tratamiento.",
         );
       }
 
@@ -282,7 +287,7 @@ export default function ReportForm({
 
         collaborator: text("collaborator"),
         date: observationDate,
-        crop: "Rabanito",
+        crop: crop.trim(),
 
         bulbColor: text("bulbColor") || "No observado",
         leafColor: text("leafColor") || "No observado",
@@ -372,6 +377,12 @@ export default function ReportForm({
           </legend>
 
           <div className="form-grid">
+            <label className="span-2">
+              Cultivo confirmado *
+              <input required maxLength={100} value={crop} readOnly={isExisting}
+                onChange={(event) => setCrop(event.target.value)}
+                placeholder="Ej. tomate, rabanito, lechuga" />
+            </label>
             <label className="span-2">
               Planta
               <select
