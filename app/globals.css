@@ -2938,3 +2938,8 @@ textarea {
   .auth-security { margin-top:22px; }
 }
 @media (prefers-reduced-motion:reduce) { .auth-page *, .auth-page *::before, .auth-page *::after { animation:none !important; transition:none !important; } }
+
+/* TerraNova: únicamente personalización visual de marca. */
+.brand-mark, .auth-brand-mark { background: transparent; box-shadow: none; overflow: hidden; }
+.brand-mark img, .auth-brand-mark img { display:block; width:100%; height:100%; object-fit:contain; border-radius:9px; }
+.brand > span:last-child > span, .auth-brand > span:last-child > span { color: var(--green-text, #b0eb81); font-weight:650; }

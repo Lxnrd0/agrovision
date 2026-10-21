@@ -165,7 +165,7 @@ export function exportSimpleCsv(records: FieldRecord[]) {
     type: "text/csv;charset=utf-8",
   });
 
-  download(URL.createObjectURL(blob), "AgroVision_monitoreo.csv");
+  download(URL.createObjectURL(blob), "TerraNova_monitoreo.csv");
 }
 
 export function exportCsv(records: FieldRecord[]) {
@@ -285,7 +285,7 @@ export function exportCsv(records: FieldRecord[]) {
 
   download(
     URL.createObjectURL(blob),
-    "AgroVision_seguimiento.csv",
+    "TerraNova_seguimiento.csv",
   );
 }
 
@@ -319,7 +319,7 @@ export async function exportPdf(records: FieldRecord[]) {
     doc.rect(0, 0, pageWidth, 32, "F");
     doc.setTextColor(166, 231, 124);
     doc.setFontSize(21);
-    doc.text("AgroVision", left, 15);
+    doc.text("TerraNova", left, 15);
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(9);
     doc.text(title, left, 24);
@@ -364,7 +364,7 @@ export async function exportPdf(records: FieldRecord[]) {
           // Continuaciones de tablas largas mantienen el encabezado de informe.
           doc.setTextColor(...green);
           doc.setFontSize(9);
-          doc.text(`AgroVision · ${title}`, left, 12);
+          doc.text(`TerraNova · ${title}`, left, 12);
         }
       },
     });
@@ -519,7 +519,7 @@ export async function exportPdf(records: FieldRecord[]) {
     doc.setPage(page);
     doc.setTextColor(110, 120, 112);
     doc.setFontSize(8);
-    doc.text(`AgroVision · Página ${page} de ${totalPages}`, left, pageHeight - 9);
+    doc.text(`TerraNova · Página ${page} de ${totalPages}`, left, pageHeight - 9);
   }
-  doc.save("AgroVision_seguimiento.pdf");
+  doc.save("TerraNova_seguimiento.pdf");
 }

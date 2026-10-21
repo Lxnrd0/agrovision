@@ -3,10 +3,10 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "AgroVisión | Monitoreo del cultivo de rabanito",
+  title: "TerraNova | Monitoreo inteligente de cultivos",
   description:
-    "Plataforma de seguimiento del cultivo de rabanito. Registra observaciones de campo, consulta mediciones y compara tratamientos de fertilización.",
-  icons: { icon: "/icon.svg" },
+    "TerraNova: plataforma de monitoreo inteligente de cultivos. Registra observaciones de campo, consulta mediciones y compara tratamientos de fertilización.",
+  icons: { icon: "/terranova-icon.png" },
 };
 
 export default function RootLayout({

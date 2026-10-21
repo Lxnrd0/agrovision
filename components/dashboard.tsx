@@ -27,7 +27,6 @@ import {
   WifiOff,
   FileText,
   FileSpreadsheet,
-  HardDrive,
   CircleHelp,
 } from "lucide-react";
 
@@ -578,11 +577,11 @@ export default function Dashboard({ userEmail, onLogout }: DashboardProps) {
           }}
         >
           <span className="brand-mark">
-            <Sprout size={26} />
+            <img src="/terranova-icon.png" alt="" width={36} height={36} />
           </span>
           <span>
-            agro<span>vision</span>
-            <small>SEGUIMIENTO DEL CULTIVO</small>
+            Terra<span>Nova</span>
+            <small>MONITOREO INTELIGENTE DE CULTIVOS</small>
           </span>
         </a>
 
@@ -605,7 +604,6 @@ export default function Dashboard({ userEmail, onLogout }: DashboardProps) {
             <strong>Mi monitoreo</strong>
             <small>Monitoreo de rabanito</small>
           </div>
-          <ChevronDown size={15} />
         </div>
 
         <span className="nav-label">ESPACIO DE TRABAJO</span>
@@ -634,18 +632,6 @@ export default function Dashboard({ userEmail, onLogout }: DashboardProps) {
         </nav>
 
         <div className="sidebar-bottom">
-          <div className="local-card">
-            <span className="local-icon">
-              {cloudMode ? <Cloud size={19} /> : <HardDrive size={19} />}
-            </span>
-            <strong>{cloudMode ? "Bitácora en la nube" : "Almacenamiento local"}</strong>
-            <p>{cloudMode ? "Los registros se comparten con el equipo en todos los dispositivos." : "Tus registros se guardan solo en este navegador."}</p>
-            <div>
-              <span className="status-dot" />
-              {cloudMode ? "Sincronización activa" : "Solo este dispositivo"}
-            </div>
-          </div>
-
           <button
             type="button"
             className="sidebar-link"
@@ -658,16 +644,6 @@ export default function Dashboard({ userEmail, onLogout }: DashboardProps) {
             <ArrowUpRight size={14} />
           </button>
 
-          <div className="sidebar-footer">
-            <span className="workspace-icon">
-              <Sprout size={18} />
-            </span>
-            <div>
-              <strong>Proyecto de rabanito</strong>
-              <small>Cultivo de rabanito</small>
-            </div>
-            <span className="version">v1.1</span>
-          </div>
         </div>
       </aside>
 
@@ -731,7 +707,7 @@ export default function Dashboard({ userEmail, onLogout }: DashboardProps) {
             <div>
               <div className="page-eyebrow">
                 <span className="mini-line" />
-                {" "}REGISTRO Y SEGUIMIENTO DEL CULTIVO
+                {" "}REGISTRO Y MONITOREO INTELIGENTE DE CULTIVOS
               </div>
               <h1>
                 Monitoreo de rabanito<span>.</span>
