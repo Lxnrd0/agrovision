@@ -290,6 +290,7 @@ export default function ReportForm({
         crop: crop.trim(),
 
         bulbColor: text("bulbColor") || "No observado",
+        visualMetrics: estimate?.visualMetrics,
         leafColor: text("leafColor") || "No observado",
 
         heightCm: manualHeight,
@@ -644,7 +645,7 @@ export default function ReportForm({
             </label>
 
             <label className="span-2">
-              Diámetro medido del bulbo (cm)
+              Diámetro medido del órgano evaluado (cm)
               <input
                 name="diameterCm"
                 type="number"
@@ -653,7 +654,7 @@ export default function ReportForm({
                 placeholder="Opcional · Ej. 2.4"
               />
               <small>
-                Solo si puedes medir el bulbo. Si está enterrado, deja vacío.
+                Solo cuando corresponda a tu cultivo (bulbo, fruto o tallo). Registra qué mediste en las observaciones; si no lo mediste, deja vacío.
               </small>
             </label>
           </div>
@@ -749,11 +750,11 @@ export default function ReportForm({
             </label>
 
             <label>
-              Color del bulbo
+              Color de bulbo o fruto (si corresponde)
               <input
                 name="bulbColor"
                 maxLength={100}
-                placeholder="Vacío si no es visible"
+                placeholder="Opcional; indica en observaciones qué órgano es"
               />
             </label>
 
