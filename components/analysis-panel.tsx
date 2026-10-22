@@ -418,8 +418,7 @@ export default function AnalysisPanel({
             <button
               type="button"
               className="button report-button"
-              disabled={busy}
-              disabled={source !== "demo" && (!cropForRecord || cropForRecord === UNKNOWN_CROP)}
+              disabled={busy || (source !== "demo" && (!cropForRecord || cropForRecord === UNKNOWN_CROP))}
               onClick={() => onReport(source === "demo" ? "Rabanito" : cropForRecord)}
             >
               Registrar diagnóstico
