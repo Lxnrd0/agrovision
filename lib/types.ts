@@ -6,6 +6,7 @@ export type Diagnosis = {
   leafColor: string;
   leafCount: number | null;
   diameterCm: number | null;
+  visualMetrics?: { label: string; value: string }[];
   health: PlantHealth;
   confidence: number;
   observations: string[];

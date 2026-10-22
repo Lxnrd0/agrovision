@@ -34,10 +34,10 @@ type AnalysisPanelProps = {
     accessToken?: string,
   ) => void;
   onDemo: () => void;
-  onReport: () => void;
+  onReport: (confirmedCrop: string) => void;
 };
 
-const CROP = "Rabanito";
+const UNKNOWN_CROP = "Cultivo no identificado";
 
 export default function AnalysisPanel({
   image,
@@ -57,6 +57,11 @@ export default function AnalysisPanel({
   const [drag, setDrag] = useState(false);
   const [scale, setScale] = useState("");
   const [accessToken, setAccessToken] = useState("");
+  const [cropMode, setCropMode] = useState<"auto" | "manual">("auto");
+  const [manualCrop, setManualCrop] = useState("");
+  const [confirmedCrop, setConfirmedCrop] = useState("");
+  const proposedCrop = diagnosis?.crop?.trim() || UNKNOWN_CROP;
+  const cropForRecord = cropMode === "manual" ? manualCrop.trim() : confirmedCrop.trim();
 
   return (
     <div className="analysis-grid">
@@ -87,7 +92,7 @@ export default function AnalysisPanel({
           {image ? (
             <img
               src={image}
-              alt="Fotografía de la muestra de rabanito"
+              alt="Fotografía del cultivo"
             />
           ) : (
             <div className="image-empty">
@@ -108,7 +113,7 @@ export default function AnalysisPanel({
                   ? "MUESTRA DE EJEMPLO"
                   : "IMAGEN CARGADA"}
             </span>
-            <span className="image-chip">RABANITO</span>
+            <span className="image-chip">{source === "demo" ? "EJEMPLO" : diagnosis ? proposedCrop.toUpperCase() : "CULTIVO POR IDENTIFICAR"}</span>
           </div>
 
           {busy && <div className="scan-beam" />}
@@ -142,7 +147,7 @@ export default function AnalysisPanel({
           accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
           className="sr-only"
           disabled={busy}
-          aria-label="Cargar imagen de rabanito"
+          aria-label="Cargar imagen de cultivo"
           onChange={(event) => {
             const file = event.target.files?.[0];
 
@@ -170,13 +175,14 @@ export default function AnalysisPanel({
 
         <div className="analysis-controls">
           <label>
-            Cultivo
-            <input
-              type="text"
-              value={CROP}
-              readOnly
-              aria-readonly="true"
-            />
+            Identificación de cultivo
+            <select disabled={busy} value={cropMode} onChange={(event) => {
+              setCropMode(event.target.value as "auto" | "manual");
+              setConfirmedCrop("");
+            }}>
+              <option value="auto">Detectar automáticamente con IA</option>
+              <option value="manual">Indicar cultivo manualmente</option>
+            </select>
           </label>
 
           <label>
@@ -193,6 +199,15 @@ export default function AnalysisPanel({
             </select>
           </label>
         </div>
+
+        {cropMode === "manual" && (
+          <label className="scale-input">
+            Cultivo declarado
+            <input disabled={busy} value={manualCrop} maxLength={100}
+              onChange={(event) => setManualCrop(event.target.value)}
+              placeholder="Ej. tomate, lechuga, rabanito" />
+          </label>
+        )}
 
         {mode === "real" && (
           <label className="scale-input">
@@ -234,11 +249,11 @@ export default function AnalysisPanel({
           <button
             type="button"
             className="button primary"
-            disabled={busy || !image}
+            disabled={busy || !image || (mode === "real" && cropMode === "manual" && !manualCrop.trim())}
             onClick={() =>
               mode === "demo"
                 ? onDemo()
-                : onAnalyze(CROP, scale, accessToken)
+                : onAnalyze(cropMode === "auto" ? "" : manualCrop.trim(), scale, accessToken)
             }
           >
             {busy ? <Loading /> : <Sparkles size={17} />}
@@ -265,6 +280,23 @@ export default function AnalysisPanel({
 
         {diagnosis ? (
           <>
+            {source !== "demo" && (
+              <div style={{ margin: "0 20px 18px", padding: 14, border: "1px solid var(--border)", borderRadius: 8 }}>
+                <label style={{ display: "grid", gap: 8 }}>
+                  Cultivo identificado por la IA (confirma o corrige antes de registrar)
+                  <input maxLength={100} value={cropMode === "manual" ? manualCrop : confirmedCrop}
+                    onChange={(event) => cropMode === "manual" ? setManualCrop(event.target.value) : setConfirmedCrop(event.target.value)}
+                    placeholder={proposedCrop === UNKNOWN_CROP ? "Escribe el cultivo confirmado" : proposedCrop} />
+                </label>
+                <button className="button secondary" type="button" style={{ marginTop: 10 }}
+                  onClick={() => cropMode === "manual" ? setManualCrop(proposedCrop === UNKNOWN_CROP ? "" : proposedCrop) : setConfirmedCrop(proposedCrop === UNKNOWN_CROP ? "" : proposedCrop)}>
+                  Usar identificación sugerida: {proposedCrop}
+                </button>
+                <p style={{ fontSize: 12, color: "var(--muted)", marginTop: 10 }}>
+                  La IA puede equivocarse. Comprueba la planta antes de registrar el cultivo.
+                </p>
+              </div>
+            )}
             <div className="health-card">
               <div className="health-ring">
                 <Leaf size={26} />
@@ -327,31 +359,20 @@ export default function AnalysisPanel({
             </div>
 
             <div className="diagnostic-metrics">
-              {[
-                [CircleDot, "Color del bulbo", diagnosis.bulbColor],
-                [Leaf, "Color de hojas", diagnosis.leafColor],
-                [
-                  Layers3,
-                  "Hojas visibles",
-                  diagnosis.leafCount === null
-                    ? "No estimable"
-                    : `${diagnosis.leafCount} hojas`,
-                ],
-                [
-                  Ruler,
-                  "Diámetro aproximado",
-                  diagnosis.diameterCm === null
-                    ? "Sin escala"
-                    : `${diagnosis.diameterCm} cm`,
-                ],
-              ].map(([Icon, label, measure]) => {
-                const MetricIcon = Icon as typeof Leaf;
-
+              {(diagnosis.visualMetrics?.length
+                ? diagnosis.visualMetrics
+                : [
+                    { label: "Color de hojas", value: diagnosis.leafColor || "No observable" },
+                    { label: "Hojas visibles", value: diagnosis.leafCount === null ? "No estimable" : `${diagnosis.leafCount} hojas` },
+                    { label: "Medición de tamaño", value: diagnosis.diameterCm === null ? "Sin escala" : `${diagnosis.diameterCm} cm` },
+                    { label: "Identificación", value: diagnosis.crop || "No identificada" },
+                  ]).map((metric, index) => {
+                const Icon = [Leaf, Layers3, Ruler, CircleDot][index % 4];
                 return (
-                  <div key={String(label)}>
-                    <MetricIcon size={17} />
-                    <span>{String(label)}</span>
-                    <strong>{String(measure)}</strong>
+                  <div key={`${metric.label}-${index}`}>
+                    <Icon size={17} />
+                    <span>{metric.label}</span>
+                    <strong>{metric.value}</strong>
                   </div>
                 );
               })}
@@ -386,8 +407,8 @@ export default function AnalysisPanel({
             <button
               type="button"
               className="button report-button"
-              disabled={busy}
-              onClick={onReport}
+              disabled={busy || (source !== "demo" && (!cropForRecord || cropForRecord === UNKNOWN_CROP))}
+              onClick={() => onReport(source === "demo" ? "Rabanito" : cropForRecord)}
             >
               Registrar diagnóstico
               <ArrowUpRight size={18} />

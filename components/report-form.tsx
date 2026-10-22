@@ -15,6 +15,7 @@ import { Save, Upload } from "lucide-react";
 type ReportFormProps = {
   records: FieldRecord[];
   diagnosis: Diagnosis | null;
+  confirmedCrop: string;
   image: string;
   source: FieldRecord["source"];
   onClose: () => void;
@@ -57,6 +58,7 @@ function localDate() {
 export default function ReportForm({
   records,
   diagnosis,
+  confirmedCrop,
   image,
   source,
   onClose,
@@ -71,6 +73,7 @@ export default function ReportForm({
 
   const [selectedId, setSelectedId] = useState("");
   const [plantId, setPlantId] = useState("");
+  const [crop, setCrop] = useState(confirmedCrop);
   const [sowingDate, setSowingDate] = useState("");
   const [zone, setZone] = useState("");
   const [fertilizer, setFertilizer] = useState("");
@@ -133,6 +136,7 @@ export default function ReportForm({
     const plant = plants.find((record) => record.id === id);
 
     setPlantId(plant?.plantId ?? "");
+    setCrop(plant?.crop ?? confirmedCrop);
     setSowingDate(plant?.sowingDate ?? "");
     setZone(plant?.zone ?? "");
     setFertilizer(plant?.fertilizer ?? "");
@@ -178,13 +182,14 @@ export default function ReportForm({
       }
 
       if (
+        !crop.trim() ||
         !plantId.trim() ||
         !sowingDate ||
         !zone.trim() ||
         !fertilizer.trim()
       ) {
         throw new Error(
-          "Completa el identificador, la siembra, el lote y el tratamiento.",
+          "Completa el cultivo, identificador, siembra, lote y tratamiento.",
         );
       }
 
@@ -282,9 +287,10 @@ export default function ReportForm({
 
         collaborator: text("collaborator"),
         date: observationDate,
-        crop: "Rabanito",
+        crop: crop.trim(),
 
         bulbColor: text("bulbColor") || "No observado",
+        visualMetrics: estimate?.visualMetrics,
         leafColor: text("leafColor") || "No observado",
 
         heightCm: manualHeight,
@@ -372,6 +378,12 @@ export default function ReportForm({
           </legend>
 
           <div className="form-grid">
+            <label className="span-2">
+              Cultivo confirmado *
+              <input required maxLength={100} value={crop} readOnly={isExisting}
+                onChange={(event) => setCrop(event.target.value)}
+                placeholder="Ej. tomate, rabanito, lechuga" />
+            </label>
             <label className="span-2">
               Planta
               <select
@@ -633,7 +645,7 @@ export default function ReportForm({
             </label>
 
             <label className="span-2">
-              Diámetro medido del bulbo (cm)
+              Diámetro medido del órgano evaluado (cm)
               <input
                 name="diameterCm"
                 type="number"
@@ -642,7 +654,7 @@ export default function ReportForm({
                 placeholder="Opcional · Ej. 2.4"
               />
               <small>
-                Solo si puedes medir el bulbo. Si está enterrado, deja vacío.
+                Solo cuando corresponda a tu cultivo (bulbo, fruto o tallo). Registra qué mediste en las observaciones; si no lo mediste, deja vacío.
               </small>
             </label>
           </div>
@@ -738,11 +750,11 @@ export default function ReportForm({
             </label>
 
             <label>
-              Color del bulbo
+              Color de bulbo o fruto (si corresponde)
               <input
                 name="bulbColor"
                 maxLength={100}
-                placeholder="Vacío si no es visible"
+                placeholder="Opcional; indica en observaciones qué órgano es"
               />
             </label>
 
