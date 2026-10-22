@@ -517,8 +517,36 @@ Evalúa esta fotografía.
           diagnosis.limitations.push("No se obtuvieron fuentes web verificables para ampliar este análisis.");
         }
       } catch (researchError) {
-        console.warn("[TerraNova] Investigación web no disponible", researchError instanceof Error ? researchError.name : "UnknownError");
-        diagnosis.limitations.push("La investigación de fuentes en Internet no estuvo disponible; las recomendaciones se basan solo en el análisis inicial.");
+        // Registrar el motivo real en Runtime Logs para diagnosticar la búsqueda web.
+        // Se redactan claves API antes de escribir el mensaje y se limita su longitud.
+        const researchInfo =
+          typeof researchError === "object" && researchError !== null
+            ? (researchError as {
+                status?: unknown;
+                code?: unknown;
+                message?: unknown;
+                response?: { status?: unknown };
+              })
+            : {};
+        const researchStatusValue =
+          typeof researchInfo.status === "number"
+            ? researchInfo.status
+            : typeof researchInfo.response?.status === "number"
+              ? researchInfo.response.status
+              : null;
+        const researchMessage =
+          (researchError instanceof Error ? researchError.message : String(researchError))
+            .replace(/AIza[0-9A-Za-z_-]{20,}/g, "[REDACTED_API_KEY]")
+            .slice(0, 400);
+        console.error("[TerraNova] Investigación web falló", {
+          provider,
+          model,
+          status: researchStatusValue,
+          name: researchError instanceof Error ? researchError.name : "UnknownError",
+          code: typeof researchInfo.code === "string" ? researchInfo.code : undefined,
+          message: researchMessage,
+        });
+        diagnosis.limitations.push("No se pudo completar la búsqueda web en este intento. El análisis visual se conservó; vuelve a intentarlo más tarde.");
       }
       diagnosis.limitations = diagnosis.limitations.slice(0, 12);
     }
