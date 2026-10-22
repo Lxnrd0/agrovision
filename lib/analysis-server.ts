@@ -461,6 +461,68 @@ Evalúa esta fotografía.
       value: metric.value.trim() || "No observable",
     }));
 
+    // Investigación agronómica adicional, basada en fuentes web reales.
+    // Es independiente del análisis visual y jamás altera sus mediciones.
+    // Si el buscador no está disponible, el análisis original sigue funcionando.
+    if (provider === "gemini" && env.GEMINI_API_KEY) {
+      try {
+        const aiResearch = new GoogleGenAI({
+          apiKey: env.GEMINI_API_KEY,
+          httpOptions: { timeout: 22_000 },
+        });
+        const researchPrompt = [
+          "Eres un asistente de extensión agraria. Busca en Google Search fuentes agronómicas de universidades, centros de investigación o instituciones agrícolas.",
+          "Responde en español, de forma breve, específica y útil para un agricultor en Perú.",
+          "Las siguientes son OBSERVACIONES VISUALES HIPOTÉTICAS de una IA, NO un diagnóstico confirmado:",
+          `Cultivo: ${diagnosis.crop}`,
+          `Hallazgos: ${diagnosis.observations.slice(0, 4).join(" | ")}`,
+          "Investiga 1) causas PLAUSIBLES y cómo diferenciarlas en campo; 2) medidas inmediatas de manejo integrado de plagas o problemas fisiológicos; 3) prevención y seguimiento.",
+          "No afirmes que se identificó una especie de plaga sin ver al organismo. No des dosis, mezclas ni marcas de plaguicidas.",
+          "Si se considera control químico, menciona solo que debe comprobarse el registro local del producto, cultivo, etiqueta y período de carencia con SENASA Perú.",
+          "Entrega 3 a 4 líneas, cada una una recomendación concreta con su justificación breve; sin títulos, viñetas ni enlaces inventados.",
+          "No reproduzcas literalmente los hallazgos visuales. Si no encuentras evidencia relevante, dilo.",
+        ].join("\n");
+        const result = await aiResearch.models.generateContent({
+          model,
+          contents: researchPrompt,
+          config: {
+            tools: [{ googleSearch: {} }],
+            temperature: 0.1,
+            maxOutputTokens: 850,
+          },
+        });
+        const firstCandidate = result.candidates?.[0];
+        const webChunks = firstCandidate?.groundingMetadata?.groundingChunks || [];
+        const sources = webChunks
+          .map((chunk) => chunk.web)
+          .filter((web): web is { uri: string; title?: string } =>
+            typeof web?.uri === "string" && /^https:\/\//.test(web.uri)
+          )
+          .slice(0, 3);
+        // Nunca presentar texto genérico del modelo como investigación comprobada.
+        if (sources.length > 0 && result.text?.trim()) {
+          const advice = result.text.split(/\n+/)
+            .map((line) => line.replace(/^[-*•\d.\s]+/, "").trim())
+            .filter(Boolean)
+            .slice(0, 4)
+            .map((line) => `Investigación técnica: ${line}`.slice(0, 1000));
+          diagnosis.recommendations = [
+            ...diagnosis.recommendations.slice(0, Math.max(0, 9 - advice.length)),
+            ...advice,
+            ...sources.map((source) =>
+              `Fuente consultada: ${(source.title || "Referencia técnica").slice(0, 85)} — ${source.uri}`.slice(0, 1000)
+            ),
+          ].slice(0, 12);
+        } else {
+          diagnosis.limitations.push("No se obtuvieron fuentes web verificables para ampliar este análisis.");
+        }
+      } catch (researchError) {
+        console.warn("[TerraNova] Investigación web no disponible", researchError instanceof Error ? researchError.name : "UnknownError");
+        diagnosis.limitations.push("La investigación de fuentes en Internet no estuvo disponible; las recomendaciones se basan solo en el análisis inicial.");
+      }
+      diagnosis.limitations = diagnosis.limitations.slice(0, 12);
+    }
+
     return Response.json(
       {
         diagnosis,
