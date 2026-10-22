@@ -359,31 +359,20 @@ export default function AnalysisPanel({
             </div>
 
             <div className="diagnostic-metrics">
-              {[
-                [CircleDot, "Color del bulbo", diagnosis.bulbColor],
-                [Leaf, "Color de hojas", diagnosis.leafColor],
-                [
-                  Layers3,
-                  "Hojas visibles",
-                  diagnosis.leafCount === null
-                    ? "No estimable"
-                    : `${diagnosis.leafCount} hojas`,
-                ],
-                [
-                  Ruler,
-                  "Diámetro aproximado",
-                  diagnosis.diameterCm === null
-                    ? "Sin escala"
-                    : `${diagnosis.diameterCm} cm`,
-                ],
-              ].map(([Icon, label, measure]) => {
-                const MetricIcon = Icon as typeof Leaf;
-
+              {(diagnosis.visualMetrics?.length
+                ? diagnosis.visualMetrics
+                : [
+                    { label: "Color de hojas", value: diagnosis.leafColor || "No observable" },
+                    { label: "Hojas visibles", value: diagnosis.leafCount === null ? "No estimable" : `${diagnosis.leafCount} hojas` },
+                    { label: "Medición de tamaño", value: diagnosis.diameterCm === null ? "Sin escala" : `${diagnosis.diameterCm} cm` },
+                    { label: "Identificación", value: diagnosis.crop || "No identificada" },
+                  ]).map((metric, index) => {
+                const Icon = [Leaf, Layers3, Ruler, CircleDot][index % 4];
                 return (
-                  <div key={String(label)}>
-                    <MetricIcon size={17} />
-                    <span>{String(label)}</span>
-                    <strong>{String(measure)}</strong>
+                  <div key={`${metric.label}-${index}`}>
+                    <Icon size={17} />
+                    <span>{metric.label}</span>
+                    <strong>{metric.value}</strong>
                   </div>
                 );
               })}
