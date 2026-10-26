@@ -609,7 +609,6 @@ Analiza ahora la imagen.`;
         config: {
           responseMimeType: "application/json",
           responseJsonSchema: schema,
-          temperature: 0.2,
           maxOutputTokens: 1800,
         },
       });
