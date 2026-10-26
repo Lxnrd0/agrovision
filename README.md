@@ -33,7 +33,7 @@ npm start
 
 ```dotenv
 GEMINI_API_KEY=tu_clave_de_google_ai_studio
-GEMINI_MODEL=gemini-3.1-flash-lite
+GEMINI_MODEL=gemini-3.8-flash
 OPENAI_API_KEY=
 OPENAI_MODEL=gpt-4o
 ANALYSIS_ACCESS_TOKEN=
@@ -130,7 +130,7 @@ Respuesta correcta:
 ```json
 {
   "source": "gemini",
-  "model": "gemini-3.1-flash-lite",
+  "model": "gemini-3.8-flash",
   "analyzedAt": "2026-09-24T12:00:00.000Z",
   "diagnosis": {
     "crop": "Rábano",
@@ -165,6 +165,6 @@ Se incluyen comprobación de TypeScript, compilación de producción y pruebas d
 
 ## Fuentes y créditos
 
-- Gemini: [modelo Flash-Lite](https://ai.google.dev/gemini-api/docs/models/gemini-3.1-flash-lite), [cuotas](https://ai.google.dev/gemini-api/docs/rate-limits), [precios y nivel gratuito](https://ai.google.dev/gemini-api/docs/pricing).
+- Gemini: [modelo Flash-Lite](https://ai.google.dev/gemini-api/docs/models/gemini-3.8-flash), [cuotas](https://ai.google.dev/gemini-api/docs/rate-limits), [precios y nivel gratuito](https://ai.google.dev/gemini-api/docs/pricing).
 - Next.js: [Actualización de seguridad de la rama 14](https://nextjs.org/blog/security-update-2025-12-11).
 - Fotografía: **Omar Roque**, [Unsplash](https://unsplash.com/photos/a-bunch-of-radishes-sitting-on-top-of-green-leaves-qGTl7GssT5w), Unsplash License. Fotografía real usada como muestra visual; las cifras de demostración son ilustrativas.
