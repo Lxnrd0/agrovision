@@ -8,6 +8,11 @@ import {
   csvCell,
 } from "../lib/metrics";
 
+import {
+  plantKey,
+  treatmentKey,
+} from "../lib/tracking";
+
 import type { FieldRecord } from "../lib/types";
 
 // Registro de prueba. No representa datos reales.
@@ -72,7 +77,6 @@ test("Calcula promedios por tratamiento", () => {
 
   assert.equal(groups.length, 1);
   assert.equal(groups[0].count, 2);
-
   assert.equal(groups[0].height, 11);
   assert.equal(groups[0].diameter, 3);
 });
@@ -111,7 +115,11 @@ test("Filtra plantas por edad del cultivo", () => {
 // Prueba 4: excluir demostraciones.
 test("Excluye datos de demostracion", () => {
   const example = plant(
-    "R01", "Humus", 10, 2, 14,
+    "R01",
+    "Humus",
+    10,
+    2,
+    14,
   );
 
   const groups = compare([
@@ -124,7 +132,11 @@ test("Excluye datos de demostracion", () => {
 // Prueba 5: mediciones incompletas.
 test("No convierte medidas ausentes en cero", () => {
   const record = plant(
-    "R01", "Humus", 10, 2, 14,
+    "R01",
+    "Humus",
+    10,
+    2,
+    14,
   );
 
   const groups = compare([
@@ -151,7 +163,7 @@ test("Calcula el porcentaje de plantas sanas", () => {
   assert.equal(result.assessed, 2);
 });
 
-// Prueba 7: exportacion segura.
+// Prueba 7: exportación segura.
 test("Escapa correctamente los datos CSV", () => {
   assert.equal(
     csvCell("=1+2"),
@@ -164,4 +176,84 @@ test("Escapa correctamente los datos CSV", () => {
   );
 
   assert.equal(csvCell(null), '""');
+});
+
+// Prueba 8: separar cultivos diferentes.
+test("No mezcla plantas de cultivos diferentes", () => {
+  const radish = plant(
+    "P01",
+    "Humus",
+    10,
+    2,
+    14,
+  );
+
+  const tomato: FieldRecord = {
+    ...plant("P01", "Humus", 20, 4, 14),
+    crop: "Tomate",
+  };
+
+  const groups = compare([radish, tomato], {
+    targetAge: 14,
+  });
+
+  assert.equal(groups.length, 2);
+  assert.deepEqual(
+    groups.map((group) => group.count),
+    [1, 1],
+  );
+});
+
+// Prueba 9: incluir el cultivo en las claves.
+test("Distingue plantas y tratamientos de cultivos diferentes", () => {
+  const radish = plant(
+    "P01",
+    "Humus",
+    10,
+    2,
+    14,
+  );
+
+  const tomato: FieldRecord = {
+    ...radish,
+    crop: "Tomate",
+  };
+
+  assert.notEqual(
+    plantKey(radish),
+    plantKey(tomato),
+  );
+
+  assert.notEqual(
+    treatmentKey(radish),
+    treatmentKey(tomato),
+  );
+});
+
+// Prueba 10: normalizar espacios, mayúsculas y acentos.
+test("Normaliza las claves de plantas y tratamientos", () => {
+  const original = plant(
+    "P01",
+    "Humus",
+    10,
+    2,
+    14,
+  );
+
+  const normalized: FieldRecord = {
+    ...original,
+    crop: " RÁBANITO ",
+    zone: " PARCELA A ",
+    fertilizer: " HÚMUS ",
+  };
+
+  assert.equal(
+    plantKey(original),
+    plantKey(normalized),
+  );
+
+  assert.equal(
+    treatmentKey(original),
+    treatmentKey(normalized),
+  );
 });

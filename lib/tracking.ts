@@ -1,6 +1,15 @@
+
 import type { FieldRecord } from "./types";
 
 export type Metric = "diameterCm" | "heightCm" | "leafCount";
+
+function normalizeKey(value: string | undefined | null): string {
+  return (value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
+}
 
 export function daysBetween(a: string, b: string): number {
   function parse(date: string): number {
@@ -17,7 +26,14 @@ export function daysBetween(a: string, b: string): number {
     return normalized === date ? timestamp : NaN;
   }
 
-  return (parse(b) - parse(a)) / 86400000;
+  const start = parse(a);
+  const end = parse(b);
+
+  if (!Number.isFinite(start) || !Number.isFinite(end)) {
+    return NaN;
+  }
+
+  return (end - start) / 86400000;
 }
 
 export function age(record: FieldRecord): number | null {
@@ -31,20 +47,25 @@ export function age(record: FieldRecord): number | null {
 
 export function plantKey(record: FieldRecord): string {
   return JSON.stringify([
-    record.zone.trim().toLowerCase(),
-    record.plantId?.trim().toLowerCase(),
-    record.sowingDate,
+    normalizeKey(record.crop),
+    normalizeKey(record.zone),
+    normalizeKey(record.plantId),
+    record.sowingDate || "",
   ]);
 }
 
 export function treatmentKey(record: FieldRecord): string {
   return JSON.stringify([
-    record.fertilizer.trim().toLowerCase(),
-    record.dose?.trim().toLowerCase(),
+    normalizeKey(record.crop),
+    normalizeKey(record.fertilizer),
+    normalizeKey(record.dose),
   ]);
 }
 
-export function origin(record: FieldRecord, metric: Metric) {
+export function origin(
+  record: FieldRecord,
+  metric: Metric,
+): string {
   return record.measurementSources?.[metric] || "unknown";
 }
 
@@ -62,7 +83,9 @@ export function value(
     return null;
   }
 
-  if (metric === "diameterCm" && measure <= 0) return null;
+  if (metric === "diameterCm" && measure <= 0) {
+    return null;
+  }
 
   if (metric === "leafCount" && !Number.isInteger(measure)) {
     return null;
@@ -172,11 +195,18 @@ export function growth(
 
   if (!previous) return null;
 
+  const previousValue = value(previous, metric);
   const days = daysBetween(previous.date, record.date);
 
-  if (!Number.isFinite(days) || days <= 0) return null;
+  if (
+    previousValue === null ||
+    !Number.isFinite(days) ||
+    days <= 0
+  ) {
+    return null;
+  }
 
-  const delta = currentValue - value(previous, metric)!;
+  const delta = currentValue - previousValue;
 
   return {
     delta,

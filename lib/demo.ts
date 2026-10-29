@@ -4,6 +4,24 @@ export const demoDiagnosis: Diagnosis = {
   crop: "Rábano · Raphanus sativus",
   bulbColor: "Rojo carmín",
   leafColor: "Verde intenso",
+  visualMetrics: [
+    {
+      label: "Estado del follaje",
+      value: "Verde intenso en el ejemplo ilustrativo.",
+    },
+    {
+      label: "Raíz engrosada visible",
+      value: "Color rojo carmín en el ejemplo ilustrativo.",
+    },
+    {
+      label: "Daño foliar",
+      value: "Sin daño evidente en el ejemplo simulado.",
+    },
+    {
+      label: "Desarrollo aparente",
+      value: "Resultado ilustrativo; no es una medición real.",
+    },
+  ],
   leafCount: 7,
   diameterCm: 3.8,
   health: "Sano",
