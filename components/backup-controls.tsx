@@ -4,264 +4,22 @@ import { useRef, useState } from "react";
 import { Download, Upload } from "lucide-react";
 import type { FieldRecord } from "@/lib/types";
 import { readImage } from "@/lib/storage";
-import {
-  daysBetween,
-  eligible,
-  validateRecord,
-} from "@/lib/tracking";
+import { isObject, isRecord } from "@/lib/backup";
+import { restoreRecords } from "@/lib/storage";
+import { isCloudPhotoUrl } from "@/lib/cloud";
 
 type Props = {
   records: FieldRecord[];
   onRestored: (records: FieldRecord[]) => void;
+  restoreRecords?: (records: FieldRecord[]) => Promise<{ records: FieldRecord[]; added: number }>;
   notify: (message: string, error?: boolean) => void;
 };
-
-function isObject(
-  input: unknown,
-): input is Record<string, unknown> {
-  return (
-    typeof input === "object" &&
-    input !== null &&
-    !Array.isArray(input)
-  );
-}
-
-function isRecord(input: unknown): input is FieldRecord {
-  if (!isObject(input)) return false;
-
-  const strings = [
-    "id",
-    "date",
-    "collaborator",
-    "zone",
-    "fertilizer",
-    "crop",
-    "bulbColor",
-    "leafColor",
-    "image",
-    "createdAt",
-  ];
-
-  if (strings.some((key) => typeof input[key] !== "string")) {
-    return false;
-  }
-
-  if (!(input.id as string).trim()) return false;
-
-  if (
-    !Number.isFinite(
-      daysBetween(input.date as string, input.date as string),
-    )
-  ) {
-    return false;
-  }
-
-  if (!Number.isFinite(Date.parse(input.createdAt as string))) {
-    return false;
-  }
-
-  if (
-    !["Sano", "Enfermo", "Indeterminado"].includes(
-      String(input.health),
-    )
-  ) {
-    return false;
-  }
-
-  if (
-    !["manual", "gemini", "openai", "demo"].includes(
-      String(input.source),
-    )
-  ) {
-    return false;
-  }
-
-  if (
-    typeof input.confidence !== "number" ||
-    !Number.isFinite(input.confidence) ||
-    input.confidence < 0 ||
-    input.confidence > 100
-  ) {
-    return false;
-  }
-
-  for (const key of [
-    "observations",
-    "recommendations",
-    "limitations",
-  ]) {
-    const list = input[key];
-
-    if (
-      !Array.isArray(list) ||
-      list.some((item) => typeof item !== "string")
-    ) {
-      return false;
-    }
-  }
-
-  for (const key of ["plantId", "sowingDate", "dose"]) {
-    if (
-      input[key] !== undefined &&
-      typeof input[key] !== "string"
-    ) {
-      return false;
-    }
-  }
-
-  for (const key of [
-    "heightCm",
-    "leafCount",
-    "diameterCm",
-    "estimatedDiameterCm",
-    "estimatedLeafCount",
-  ]) {
-    const measure = input[key];
-
-    if (measure == null) continue;
-
-    if (
-      typeof measure !== "number" ||
-      !Number.isFinite(measure) ||
-      measure < 0
-    ) {
-      return false;
-    }
-
-    if (
-      (key === "leafCount" || key === "estimatedLeafCount") &&
-      !Number.isInteger(measure)
-    ) {
-      return false;
-    }
-  }
-
-  if (input.measurementSources !== undefined) {
-    if (!isObject(input.measurementSources)) return false;
-
-    for (const [key, source] of Object.entries(
-      input.measurementSources,
-    )) {
-      if (
-        !["heightCm", "leafCount", "diameterCm"].includes(key) ||
-        !["manual", "ia", "unknown"].includes(String(source))
-      ) {
-        return false;
-      }
-    }
-  }
-
-  if (
-    input.aiObservations !== undefined &&
-    (
-      !Array.isArray(input.aiObservations) ||
-      input.aiObservations.some(
-        (item) => typeof item !== "string",
-      )
-    )
-  ) {
-    return false;
-  }
-
-  const photo = input.image as string;
-
-  if (
-    photo &&
-    !/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=\r\n]+$/.test(
-      photo,
-    )
-  ) {
-    return false;
-  }
-
-  return true;
-}
-
-async function restoreIntoStorage(incoming: FieldRecord[]) {
-  const db = await new Promise<IDBDatabase>((resolve, reject) => {
-    const request = indexedDB.open("agrovision", 1);
-
-    request.onupgradeneeded = () => {
-      if (!request.result.objectStoreNames.contains("data")) {
-        request.result.createObjectStore("data");
-      }
-    };
-
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
-
-  return new Promise<{
-    records: FieldRecord[];
-    added: number;
-  }>((resolve, reject) => {
-    const transaction = db.transaction("data", "readwrite");
-    const store = transaction.objectStore("data");
-    const request = store.get("records");
-
-    let next: FieldRecord[] = [];
-    let added = 0;
-    let failure: unknown;
-
-    request.onsuccess = () => {
-      try {
-        const current = request.result ?? [];
-
-        if (!Array.isArray(current)) {
-          throw new Error("No se pudo leer la bitácora actual.");
-        }
-
-        next = [...current];
-
-        const existingIds = new Set(
-          next.map((record) => record.id),
-        );
-
-        for (const record of incoming) {
-          if (existingIds.has(record.id)) continue;
-
-          if (eligible(record)) {
-            validateRecord(record, next);
-          }
-
-          next.push(record);
-          existingIds.add(record.id);
-          added++;
-        }
-
-        next.sort(
-          (a, b) =>
-            b.date.localeCompare(a.date) ||
-            b.createdAt.localeCompare(a.createdAt),
-        );
-
-        store.put(next, "records");
-      } catch (error) {
-        failure = error;
-        transaction.abort();
-      }
-    };
-
-    transaction.oncomplete = () => {
-      db.close();
-      resolve({ records: next, added });
-    };
-
-    transaction.onabort = transaction.onerror = () => {
-      db.close();
-      reject(
-        failure ??
-          transaction.error ??
-          new Error("No se pudo restaurar el respaldo."),
-      );
-    };
-  });
-}
 
 export default function BackupControls({
   records,
   onRestored,
   notify,
+  restoreRecords: restore = restoreRecords,
 }: Props) {
   const picker = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
@@ -284,7 +42,7 @@ export default function BackupControls({
         if (image && !image.startsWith("data:")) {
           const url = new URL(image, window.location.origin);
 
-          if (url.origin !== window.location.origin) {
+          if (url.origin !== window.location.origin && !isCloudPhotoUrl(url.href)) {
             throw new Error(
               "Una fotografía externa debe adjuntarse de nuevo antes del respaldo.",
             );
@@ -364,7 +122,7 @@ export default function BackupControls({
     }
   }
 
-  async function restore(file: File) {
+  async function restoreFile(file: File) {
     if (busy) return;
 
     setBusy(true);
@@ -410,7 +168,7 @@ export default function BackupControls({
       }
 
       const { records: next, added } =
-        await restoreIntoStorage(incoming);
+        await restore(incoming);
 
       onRestored(next);
 
@@ -486,7 +244,7 @@ export default function BackupControls({
           const file = event.currentTarget.files?.[0];
           event.currentTarget.value = "";
 
-          if (file) void restore(file);
+          if (file) void restoreFile(file);
         }}
       />
     </section>

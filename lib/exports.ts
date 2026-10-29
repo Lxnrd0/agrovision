@@ -1,7 +1,7 @@
 import type { FieldRecord } from "./types";
 import type { Metric } from "./tracking";
 import { csvCell } from "./metrics";
-import { age, growth, origin, value } from "./tracking";
+import { age, growth, origin, value, plantKey } from "./tracking";
 
 type MetricDefinition = {
   key: Metric;
@@ -289,7 +289,7 @@ export function exportCsv(records: FieldRecord[]) {
   );
 }
 
-export async function exportPdf(records: FieldRecord[]) {
+export async function buildPdf(records: FieldRecord[]) {
   const [{ jsPDF }, { default: autoTable }] = await Promise.all([
     import("jspdf"),
     import("jspdf-autotable"),
@@ -299,7 +299,7 @@ export async function exportPdf(records: FieldRecord[]) {
   const real = sortedRecords(records).filter((record) => record.source !== "demo");
   const groups = new Map<string, FieldRecord[]>();
   for (const record of real) {
-    const key = record.plantId?.trim() || `Sin código (${record.id})`;
+    const key = record.plantId?.trim() ? plantKey(record) : record.id;
     const group = groups.get(key) ?? [];
     group.push(record);
     groups.set(key, group);
@@ -437,7 +437,7 @@ export async function exportPdf(records: FieldRecord[]) {
     y += 66;
   }
 
-  header("Informe de seguimiento del cultivo de rabanito");
+  header("Informe de seguimiento de cultivos");
   doc.setFontSize(10);
   doc.text(`Generado: ${new Date().toLocaleString("es-PE")}`, left, y);
   y += 6;
@@ -450,7 +450,8 @@ export async function exportPdf(records: FieldRecord[]) {
   }
 
   let groupIndex = 0;
-  for (const [plantId, rows] of groups) {
+  for (const rows of groups.values()) {
+    const plantId = rows[0].plantId || `Sin código (${rows[0].id})`;
     if (groupIndex++ > 0) newPage(`Seguimiento individual · ${plantId}`);
     const latest = rows[rows.length - 1];
     const pageTitle = `Seguimiento individual · ${plantId}`;
@@ -498,6 +499,18 @@ export async function exportPdf(records: FieldRecord[]) {
       section("Observaciones de campo", pageTitle, 24);
       table(["Fecha", "Nota registrada"], notes, pageTitle, { 0: { cellWidth: 32 } });
     }
+    const analyses = rows.filter((record) => record.source === "gemini" || record.source === "openai");
+    if (analyses.length) {
+      section("Análisis visual de IA (orientativo)", pageTitle, 24);
+      const details = analyses.flatMap((record) => [
+        [record.date, "Proveedor / confianza no calibrada", `${sourceLabel(record.source)} · ${format(record.confidence, 0)} %`],
+        [record.date, "Estado visual", record.health],
+        [record.date, "Observaciones originales", (record.aiObservations ?? []).join("\n") || "No registradas"],
+        [record.date, "Recomendaciones", record.recommendations.join("\n") || "No registradas"],
+        [record.date, "Limitaciones", record.limitations.join("\n") || "No registradas"],
+      ]);
+      table(["Fecha", "Información", "Resultado"], details, pageTitle, { 0: { cellWidth: 25 }, 1: { cellWidth: 47 } });
+    }
     const photos = rows.filter((record) => record.image);
     if (photos.length) {
       section("Fotografías", pageTitle, 21);
@@ -521,5 +534,10 @@ export async function exportPdf(records: FieldRecord[]) {
     doc.setFontSize(8);
     doc.text(`TerraNova · Página ${page} de ${totalPages}`, left, pageHeight - 9);
   }
+  return doc;
+}
+
+export async function exportPdf(records: FieldRecord[]) {
+  const doc = await buildPdf(records);
   doc.save("TerraNova_seguimiento.pdf");
 }

@@ -1,4 +1,5 @@
 
+import { MAX_IMAGE_DATA_URL_CHARS, MAX_ANALYSIS_BODY_BYTES } from "./limits";
 import { z } from "zod";
 import { GoogleGenAI } from "@google/genai";
 
@@ -40,7 +41,7 @@ const diagnosisSchema = z.object({
 const inputSchema = z.object({
   image: z
     .string()
-    .max(7_000_000)
+    .max(MAX_IMAGE_DATA_URL_CHARS)
     .regex(/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/]+=*$/),
   crop: z.string().trim().max(100).default(""),
   scaleReference: z.string().max(250).optional(),
@@ -168,7 +169,7 @@ async function limitedJson(request: Request) {
 
     size += value.length;
 
-    if (size > 7_100_000) {
+    if (size > MAX_ANALYSIS_BODY_BYTES) {
       await reader.cancel();
       throw new Error("SIZE");
     }

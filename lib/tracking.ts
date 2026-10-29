@@ -106,18 +106,20 @@ export function eligible(record: FieldRecord): boolean {
 export function validateRecord(
   record: FieldRecord,
   records: FieldRecord[],
+  options: { allowLegacy?: boolean } = {},
 ): void {
-  if (
+  if (!options.allowLegacy && (
     !record.plantId?.trim() ||
     !record.sowingDate ||
     !record.dose?.trim()
-  ) {
+  )) {
     throw new Error(
       "Completa planta, fecha de siembra y dosis con su unidad.",
     );
   }
 
-  if (age(record) === null) {
+  if (!Number.isFinite(daysBetween(record.date, record.date)) ||
+      (record.sowingDate ? age(record) === null : !options.allowLegacy)) {
     throw new Error(
       "La observación debe ser posterior o igual a una fecha de siembra válida.",
     );
