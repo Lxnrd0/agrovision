@@ -1,0 +1,15 @@
+AGROVISION / TERRANOVA — PROYECTO REVISADO
+
+1. Instala Node.js 24.x (entorno verificado: 24.22.1).
+2. Abre esta carpeta en VS Code y su terminal.
+3. Ejecuta: npm ci
+4. Ejecuta: npm run dev
+5. Abre http://localhost:3000
+6. Sin Supabase, pulsa Continuar solo en este dispositivo.
+
+Para IA real o cuenta en la nube: sigue README.md y .env.example.
+No se incluyen credenciales. No necesitas claves para el registro manual.
+Para producción: npm run build y después npm start.
+
+Lee INFORME_AUDITORIA.md para los errores corregidos, pruebas y pendientes.
+No borres los datos del navegador sin descargar primero un respaldo JSON.
