@@ -30,16 +30,17 @@ import {
   CircleHelp,
 } from "lucide-react";
 
-import { demoDiagnosis, demoRecords } from "@/lib/demo";
+import { demoDiagnosis } from "@/lib/demo";
 import type { Diagnosis, FieldRecord, View } from "@/lib/types";
 import {
   readImage,
   readRecords,
-  writeRecords,
+  initialiseRecords,
   mutateRecords,
 } from "@/lib/storage";
+import { MAX_ANALYSIS_BODY_BYTES } from "@/lib/limits";
 import { summary } from "@/lib/metrics";
-import { exportSimpleCsv, exportPdf } from "@/lib/exports";
+import { exportCsv, exportPdf } from "@/lib/exports";
 import { validateRecord } from "@/lib/tracking";
 import {
   isCloudConfigured,
@@ -197,9 +198,7 @@ export default function Dashboard({ userEmail, onLogout }: DashboardProps) {
           // y excluye los registros demostrativos del proyecto original.
           initial = await migrateLocalRecordsToCloud();
         } else {
-          const saved = await readRecords();
-          initial = saved === undefined ? demoRecords : saved;
-          if (saved === undefined) await writeRecords(initial);
+          initial = await initialiseRecords();
         }
 
         if (mounted.current) {
@@ -263,8 +262,7 @@ export default function Dashboard({ userEmail, onLogout }: DashboardProps) {
       };
     }
 
-    // Polling ligero para que las modificaciones de los otros integrantes
-    // aparezcan también en dispositivos distintos sin tener que recargar.
+    // Polling de la misma cuenta en otros dispositivos. Cada cuenta es privada.
     let cloudPoll: number | undefined;
     if (cloudMode) {
       cloudPoll = window.setInterval(() => {
@@ -332,7 +330,11 @@ export default function Dashboard({ userEmail, onLogout }: DashboardProps) {
         );
       }
 
-      validateRecord(record, rows);
+      const current = rows.find((item) => item.id === record.id)!;
+      if (editing && JSON.stringify({ ...current, image: "" }) !== JSON.stringify({ ...editing, image: "" })) {
+        throw new Error("La observación cambió desde que abriste el editor. Ciérralo y vuelve a abrirla.");
+      }
+      validateRecord(record, rows, { allowLegacy: true });
 
       return rows.map((item) =>
         item.id === record.id ? record : item,
@@ -460,6 +462,11 @@ export default function Dashboard({ userEmail, onLogout }: DashboardProps) {
 
       const clientId = getClientId();
 
+      const payload = JSON.stringify({ image: dataImage, crop, scaleReference });
+      if (new TextEncoder().encode(payload).byteLength > MAX_ANALYSIS_BODY_BYTES) {
+        throw new Error("La fotografía supera el límite de envío. Carga otra imagen más pequeña.");
+      }
+
       const response = await fetch("/api/analyze-crop", {
         method: "POST",
         headers: {
@@ -469,11 +476,7 @@ export default function Dashboard({ userEmail, onLogout }: DashboardProps) {
             ? { Authorization: `Bearer ${accessToken}` }
             : {}),
         },
-        body: JSON.stringify({
-          image: dataImage,
-          crop,
-          scaleReference,
-        }),
+        body: payload,
         signal: controller.signal,
       });
 
@@ -537,7 +540,7 @@ export default function Dashboard({ userEmail, onLogout }: DashboardProps) {
       }
 
       if (format === "csv") {
-        exportSimpleCsv(records);
+        exportCsv(records);
       } else {
         await exportPdf(records);
       }
@@ -838,23 +841,12 @@ export default function Dashboard({ userEmail, onLogout }: DashboardProps) {
             <BackupControls
               records={records}
               notify={notify}
+              restoreRecords={cloudMode ? mergeBackupIntoCloud : undefined}
               onRestored={(next) => {
-                void (async () => {
-                  try {
-                    const restored = cloudMode
-                      ? await mergeBackupIntoCloud(next)
-                      : next;
-                    setRecords(restored);
-                    setLastSync(currentTime());
-                    channel.current?.postMessage("changed");
-                    setView("history");
-                    notify(cloudMode
-                      ? "Respaldo integrado y sincronizado con la nube."
-                      : "Respaldo restaurado en este dispositivo.");
-                  } catch (error) {
-                    notify(error instanceof Error ? error.message : "No se pudo sincronizar el respaldo.", true);
-                  }
-                })();
+                setRecords(next);
+                setLastSync(currentTime());
+                channel.current?.postMessage("changed");
+                setView("history");
               }}
             />
           )}
@@ -979,9 +971,10 @@ export default function Dashboard({ userEmail, onLogout }: DashboardProps) {
               {" "}Seguimiento inteligente de cultivos
             </span>
             <span>
-              {records.some((record) => record.source === "demo")
-                ? "Incluye datos de demostración · Guardado en este navegador"
-                : "Datos guardados en este navegador"}
+              {cloudMode ? "Modo nube · almacenamiento en tu cuenta" :
+                records.some((record) => record.source === "demo")
+                  ? "Incluye datos de demostración · Guardado en este navegador"
+                  : "Datos guardados en este navegador"}
             </span>
           </footer>
         </main>

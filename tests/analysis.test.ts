@@ -382,3 +382,47 @@ test("an explicit Gemini model overrides the default", async () => {
 
   assert.equal(result.model, "gemini-3.8-flash");
 });
+
+test("rejects unsupported method, content type and oversized bodies", async () => {
+  const env = { OPENAI_API_KEY: "test" };
+  assert.equal((await analyze(new Request("https://agro.test/api/analyze-crop"), env)).status, 405);
+  assert.equal((await analyze(new Request("https://agro.test/api/analyze-crop", { method: "POST", body: "{}" }), env)).status, 415);
+  assert.equal((await analyze(request({ image: "x".repeat(7_100_001) }), env)).status, 400);
+});
+
+test("provider timeout is explicit and never returns a demo diagnosis", async () => {
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => { throw new DOMException("timeout", "TimeoutError"); };
+  try {
+    const response = await analyze(request({ image }, { "x-client-id": "timeout-test" }), { OPENAI_API_KEY: "test" });
+    assert.equal(response.status, 504);
+    const body = await response.json();
+    assert.equal(body.code, "ANALYSIS_TIMEOUT");
+    assert.equal(body.diagnosis, undefined);
+  } finally { globalThis.fetch = original; }
+});
+
+test("rate limiter rejects the eleventh request and advertises retry time", async () => {
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => Response.json({ error: { message: "busy" } }, { status: 503 });
+  try {
+    for (let i = 0; i < 10; i++) {
+      const result = await analyze(request({ image }, { "x-client-id": "rate-test" }), { OPENAI_API_KEY: "test" });
+      assert.equal(result.status, 503);
+    }
+    const response = await analyze(request({ image }, { "x-client-id": "rate-test" }), { OPENAI_API_KEY: "test" });
+    assert.equal(response.status, 429);
+    assert.ok(Number(response.headers.get("Retry-After")) > 0);
+  } finally { globalThis.fetch = original; }
+});
+
+test("rejects image payloads above the Vercel-safe image limit before contacting AI", async () => {
+  const original = globalThis.fetch;
+  let contacted = false;
+  globalThis.fetch = async () => { contacted = true; throw new Error("must not call provider"); };
+  try {
+    const response = await analyze(request({ image: "data:image/jpeg;base64,/9j/" + "A".repeat(4_000_000) }), { OPENAI_API_KEY: "test" });
+    assert.equal(response.status, 400);
+    assert.equal(contacted, false);
+  } finally { globalThis.fetch = original; }
+});

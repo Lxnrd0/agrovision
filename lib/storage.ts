@@ -1,5 +1,6 @@
+import { MAX_IMAGE_DATA_URL_CHARS } from "./limits";
 import type { FieldRecord } from "./types";
-import { validateRecord } from "./tracking";
+import { eligible, validateRecord } from "./tracking";
 
 function openDatabase(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -110,7 +111,7 @@ export async function mutateRecords(
         // Valida los registros nuevos contra los datos
         // actuales, incluyendo cambios de otras pestañas.
         for (const record of next) {
-          if (!previousIds.has(record.id)) {
+          if (!previousIds.has(record.id) && eligible(record)) {
             validateRecord(record, next);
           }
         }
@@ -249,11 +250,15 @@ export async function readImage(file: File): Promise<string> {
 
     // El servidor limita el cuerpo de la petición. En teléfonos con
     // fotografías muy complejas reducimos la calidad antes de enviarla.
-    if (dataUrl.length > 6_500_000) {
+    if (dataUrl.length > MAX_IMAGE_DATA_URL_CHARS) {
       dataUrl = await toDataUrl(0.68);
     }
 
-    if (dataUrl.length > 6_900_000) {
+    if (dataUrl.length > MAX_IMAGE_DATA_URL_CHARS) {
+      dataUrl = await toDataUrl(0.5);
+    }
+
+    if (dataUrl.length > MAX_IMAGE_DATA_URL_CHARS) {
       throw new Error(
         "La fotografía sigue siendo demasiado pesada. Intenta otra imagen.",
       );
@@ -265,3 +270,33 @@ export async function readImage(file: File): Promise<string> {
   }
 }
 
+
+/** Atomic first-use initialization: a second tab cannot overwrite new observations. */
+export function initialiseRecords(): Promise<FieldRecord[]> {
+  return mutateRecords((current) => current.length ? current : []);
+}
+
+export function mergeRecords(current: FieldRecord[], incoming: FieldRecord[]) {
+  const next = [...current];
+  const ids = new Set(current.map((record) => record.id));
+  let added = 0;
+  for (const record of incoming) {
+    if (ids.has(record.id)) continue;
+    if (eligible(record)) validateRecord(record, next);
+    next.push(record);
+    ids.add(record.id);
+    added++;
+  }
+  next.sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt));
+  return { records: next, added };
+}
+
+export async function restoreRecords(incoming: FieldRecord[]) {
+  let added = 0;
+  const records = await mutateRecords((current) => {
+    const merged = mergeRecords(current, incoming);
+    added = merged.added;
+    return merged.records;
+  });
+  return { records, added };
+}

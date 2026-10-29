@@ -3,7 +3,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { ArrowLeft, Cloud, KeyRound, LoaderCircle, LockKeyhole, LogIn, Mail, UserPlus } from "lucide-react";
 import Dashboard from "./dashboard";
-import { cloudRequestPasswordReset, cloudSignIn, cloudSignOut, cloudSignUp, cloudUpdatePassword, getCloudSession, isCloudConfigured, type CloudSession } from "@/lib/cloud";
+import { cloudRequestPasswordReset, cloudSignIn, cloudSignOut, cloudSignUp, cloudUpdatePassword, getCloudSession, isCloudConfigured, sessionIdentityChanged, type CloudSession } from "@/lib/cloud";
 
 type Screen = "loading" | "login" | "app" | "local" | "setup" | "recovery" | "reset";
 
@@ -19,6 +19,19 @@ export default function AuthGate() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    // Another tab may sign out or switch accounts. Drop the mounted dashboard
+    // before any further action can use the new account's token with old data.
+    const onSessionChange = (event: StorageEvent) => {
+      if (event.key === null || (event.key === "agrovision-cloud-session-v2" &&
+          sessionIdentityChanged(event.oldValue, event.newValue))) {
+        window.location.reload();
+      }
+    };
+    window.addEventListener("storage", onSessionChange);
+    return () => window.removeEventListener("storage", onSessionChange);
+  }, []);
 
   useEffect(() => {
     if (!isCloudConfigured()) {
@@ -189,7 +202,7 @@ export default function AuthGate() {
   if (screen === "app" && session) {
     return <>
       <Dashboard userEmail={session.user.email || "Mi cuenta TerraNova"} onLogout={logout} />
-      <div className="cloud-toast" role="status"><Cloud size={14} /> Tu bitácora personal está sincronizada</div>
+      <div className="cloud-toast" role="status"><Cloud size={14} /> Modo nube · consulta el estado de sincronización en la bitácora</div>
     </>;
   }
 

@@ -1,5 +1,7 @@
 import type { FieldRecord } from "./types";
-import { readRecords } from "./storage";
+import { readRecords, mergeRecords } from "./storage";
+import { isRecord } from "./backup";
+import { eligible, validateRecord } from "./tracking";
 
 type CloudUser = { id: string; email?: string };
 export type CloudSession = {
@@ -17,6 +19,7 @@ type CloudRecordRow = {
   payload: FieldRecord;
   created_by: string;
   updated_by: string;
+  updated_at: string;
 };
 
 const SESSION_KEY = "agrovision-cloud-session-v2";
@@ -24,6 +27,26 @@ const PROJECT_ID = process.env.NEXT_PUBLIC_AGROVISION_PROJECT_ID || "rabanitos-2
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/$/, "") || "";
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
 const PRIVATE_IMAGE_PREFIX = "supabase-storage://agrovision-photos/";
+
+async function cloudFetch(input: RequestInfo | URL, init: RequestInit = {}) {
+  if (init.signal) return fetch(input, init);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30_000);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+export function sessionIdentityChanged(oldValue: string | null, newValue: string | null): boolean {
+  if (!oldValue || !newValue) return true;
+  try {
+    const oldId = JSON.parse(oldValue)?.user?.id;
+    const newId = JSON.parse(newValue)?.user?.id;
+    return typeof oldId !== "string" || typeof newId !== "string" || oldId !== newId;
+  } catch { return true; }
+}
 
 export function isCloudConfigured() {
   return Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
@@ -115,7 +138,7 @@ function normaliseSession(data: Record<string, unknown>): CloudSession | null {
 
 export async function cloudSignIn(email: string, password: string) {
   ensureCloudConfigured();
-  const response = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
+  const response = await cloudFetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
     method: "POST",
     headers: authHeaders(),
     body: JSON.stringify({ email: email.trim(), password }),
@@ -131,7 +154,7 @@ export async function cloudSignIn(email: string, password: string) {
 
 export async function cloudSignUp(email: string, password: string) {
   ensureCloudConfigured();
-  const response = await fetch(`${SUPABASE_URL}/auth/v1/signup`, {
+  const response = await cloudFetch(`${SUPABASE_URL}/auth/v1/signup`, {
     method: "POST",
     headers: authHeaders(),
     body: JSON.stringify({ email: email.trim(), password }),
@@ -148,7 +171,7 @@ export async function cloudSignOut() {
   const session = readStoredSession();
   try {
     if (session && isCloudConfigured()) {
-      await fetch(`${SUPABASE_URL}/auth/v1/logout`, {
+      await cloudFetch(`${SUPABASE_URL}/auth/v1/logout`, {
         method: "POST",
         headers: authHeaders(session.access_token),
         cache: "no-store",
@@ -165,7 +188,7 @@ export async function getCloudSession(): Promise<CloudSession | null> {
   if (!session) return null;
   if (session.expires_at > Math.floor(Date.now() / 1000) + 60) return session;
 
-  const response = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`, {
+  const response = await cloudFetch(`${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`, {
     method: "POST",
     headers: authHeaders(),
     body: JSON.stringify({ refresh_token: session.refresh_token }),
@@ -193,7 +216,7 @@ async function activeSession() {
 
 async function cloudRest<T>(path: string, init: RequestInit = {}): Promise<T> {
   const session = await activeSession();
-  const response = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+  const response = await cloudFetch(`${SUPABASE_URL}/rest/v1/${path}`, {
     ...init,
     headers: {
       ...authHeaders(session.access_token),
@@ -209,12 +232,28 @@ async function cloudRest<T>(path: string, init: RequestInit = {}): Promise<T> {
 async function getCloudRows(): Promise<CloudRecordRow[]> {
   const session = await activeSession();
   const query = new URLSearchParams({
-    select: "id,owner_id,project_id,payload,created_by,updated_by",
+    select: "id,owner_id,project_id,payload,created_by,updated_by,updated_at",
     owner_id: `eq.${session.user.id}`,
     project_id: `eq.${PROJECT_ID}`,
-    order: "updated_at.desc",
+    order: "updated_at.desc,id.asc",
   });
-  return cloudRest<CloudRecordRow[]>(`agrovision_records?${query}`);
+  const rows: CloudRecordRow[] = [];
+  const pageSize = 500;
+  const ids = new Set<string>();
+  for (let offset = 0; ;) {
+    query.set("limit", String(pageSize));
+    query.set("offset", String(offset));
+    const page = await cloudRest<CloudRecordRow[]>(`agrovision_records?${query}`);
+    if (!Array.isArray(page)) throw new Error("La nube devolvió una página inválida.");
+    if (page.length === 0) return rows;
+    for (const row of page) {
+      if (ids.has(row.id)) throw new Error("La bitácora cambió durante la lectura. Actualiza para volver a consultar.");
+      ids.add(row.id);
+    }
+    rows.push(...page);
+    // The server can enforce a smaller page size than the requested limit.
+    offset += page.length;
+  }
 }
 
 function stableStringify(value: unknown): string {
@@ -236,7 +275,7 @@ function encodePath(path: string) {
 
 async function signedImageUrl(marker: string, accessToken: string): Promise<string> {
   const path = marker.slice(PRIVATE_IMAGE_PREFIX.length);
-  const response = await fetch(`${SUPABASE_URL}/storage/v1/object/sign/agrovision-photos/${encodePath(path)}`, {
+  const response = await cloudFetch(`${SUPABASE_URL}/storage/v1/object/sign/agrovision-photos/${encodePath(path)}`, {
     method: "POST",
     headers: {
       apikey: SUPABASE_ANON_KEY,
@@ -263,7 +302,12 @@ async function withSignedImage(record: FieldRecord, accessToken: string): Promis
 export async function readCloudRecords(): Promise<FieldRecord[]> {
   const session = await activeSession();
   const rows = await getCloudRows();
-  const records = rows.map((row) => row.payload).filter((record) => record && typeof record.id === "string");
+  const records = rows.map((row) => row.payload);
+  for (const record of records) {
+    if (!isRecord({ ...record, image: "" })) {
+      throw new Error("La nube contiene un registro inválido. No se modificaron tus datos.");
+    }
+  }
   return sorted(await Promise.all(records.map((record) => withSignedImage(record, session.access_token))));
 }
 
@@ -277,7 +321,7 @@ async function uploadImageIfNeeded(record: FieldRecord): Promise<FieldRecord> {
     throw new Error("Una fotografía tiene un formato que no se puede sincronizar. Vuelve a adjuntarla.");
   }
 
-  const imageResponse = await fetch(record.image);
+  const imageResponse = await cloudFetch(record.image);
   if (!imageResponse.ok) throw new Error("No se pudo preparar una fotografía para subirla a la nube.");
   const blob = await imageResponse.blob();
   const extension = blob.type === "image/png" ? "png" : blob.type === "image/webp" ? "webp" : "jpg";
@@ -285,7 +329,7 @@ async function uploadImageIfNeeded(record: FieldRecord): Promise<FieldRecord> {
   const unique = typeof crypto.randomUUID === "function" ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const session = await activeSession();
   const path = `${session.user.id}/${record.id}-${unique}.${extension}`;
-  const response = await fetch(`${SUPABASE_URL}/storage/v1/object/agrovision-photos/${encodePath(path)}`, {
+  const response = await cloudFetch(`${SUPABASE_URL}/storage/v1/object/agrovision-photos/${encodePath(path)}`, {
     method: "POST",
     headers: {
       apikey: SUPABASE_ANON_KEY,
@@ -299,6 +343,15 @@ async function uploadImageIfNeeded(record: FieldRecord): Promise<FieldRecord> {
   const data = await responseJson(response);
   if (!response.ok) throw new Error(parseErrorMessage(data, "No se pudo guardar la fotografía en la nube."));
   return { ...record, image: `${PRIVATE_IMAGE_PREFIX}${path}` };
+}
+
+/** Only the configured private bucket may be fetched for portable backups. */
+export function isCloudPhotoUrl(input: string): boolean {
+  try {
+    const url = new URL(input);
+    return !!SUPABASE_URL && url.origin === new URL(SUPABASE_URL).origin &&
+      url.pathname.startsWith("/storage/v1/object/sign/agrovision-photos/");
+  } catch { return false; }
 }
 
 function preserveExistingPrivateImage(record: FieldRecord, previous?: FieldRecord): FieldRecord {
@@ -315,6 +368,12 @@ export async function mutateCloudRecords(update: (records: FieldRecord[]) => Fie
   const previous = sorted(rows.map((row) => row.payload));
   const previousById = new Map(rows.map((row) => [row.id, row]));
   const input = update(previous).map((record) => preserveExistingPrivateImage(record, previousById.get(record.id)?.payload));
+  const uniqueIds = new Set<string>();
+  for (const record of input) {
+    if (uniqueIds.has(record.id)) throw new Error("Hay identificadores repetidos.");
+    uniqueIds.add(record.id);
+    if (eligible(record)) validateRecord(record, input);
+  }
   const next: FieldRecord[] = [];
   for (const record of input) next.push(await uploadImageIfNeeded(record));
 
@@ -336,17 +395,38 @@ export async function mutateCloudRecords(update: (records: FieldRecord[]) => Fie
         updated_by: session.user.id,
       };
     });
-    await cloudRest<unknown>("agrovision_records?on_conflict=id", {
-      method: "POST",
-      headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
-      body: JSON.stringify(payload),
-    });
+    for (const item of payload) {
+      const old = previousById.get(item.id);
+      if (!old) {
+        // A conflicting ID must not silently overwrite an existing observation.
+        await cloudRest<unknown>("agrovision_records", {
+          method: "POST",
+          body: JSON.stringify(item),
+        });
+      } else {
+        if (!old.updated_at) throw new Error("Actualiza el esquema de Supabase antes de editar.");
+        const query = new URLSearchParams({
+          id: `eq.${item.id}`, owner_id: `eq.${session.user.id}`,
+          project_id: `eq.${PROJECT_ID}`, updated_at: `eq.${old.updated_at}`,
+        });
+        const updated = await cloudRest<CloudRecordRow[]>(`agrovision_records?${query}`, {
+          method: "PATCH", headers: { Prefer: "return=representation" },
+          body: JSON.stringify(item),
+        });
+        if (!updated.length) throw new Error("Otra sesión modificó esta observación. Recarga antes de reintentar.");
+      }
+    }
   }
 
   for (const row of rows) {
     if (!nextById.has(row.id)) {
-      const query = new URLSearchParams({ id: `eq.${row.id}`, owner_id: `eq.${session.user.id}`, project_id: `eq.${PROJECT_ID}` });
-      await cloudRest<unknown>(`agrovision_records?${query}`, { method: "DELETE" });
+      if (!row.updated_at) throw new Error("Actualiza el esquema de Supabase antes de eliminar.");
+      const query = new URLSearchParams({ id: `eq.${row.id}`, owner_id: `eq.${session.user.id}`,
+        project_id: `eq.${PROJECT_ID}`, updated_at: `eq.${row.updated_at}` });
+      const deleted = await cloudRest<CloudRecordRow[]>(`agrovision_records?${query}`, {
+        method: "DELETE", headers: { Prefer: "return=representation" },
+      });
+      if (!deleted.length) throw new Error("Otra sesión modificó esta observación. Recarga antes de eliminar.");
     }
   }
   return readCloudRecords();
@@ -363,10 +443,12 @@ export async function migrateLocalRecordsToCloud() {
     // Never copy one account's browser-only records into a different account.
     if (localOwner && localOwner !== session.user.id) return readCloudRecords();
     if (!localOwner) localStorage.setItem(localOwnerKey, session.user.id);
-  } catch {}
+  } catch {
+    // Ownership must be known before copying browser data into an account.
+    return readCloudRecords();
+  }
 
-  let local: FieldRecord[] = [];
-  try { local = (await readRecords()) || []; } catch {}
+  const local: FieldRecord[] = (await readRecords()) || [];
   const realLocal = local.filter((record) => record.source !== "demo");
   const cloud = await readCloudRecords();
   const ids = new Set(cloud.map((record) => record.id));
@@ -382,11 +464,13 @@ export async function migrateLocalRecordsToCloud() {
 }
 
 export async function mergeBackupIntoCloud(incoming: FieldRecord[]) {
-  return mutateCloudRecords((current) => {
-    const byId = new Map(current.map((record) => [record.id, record]));
-    for (const record of incoming) if (!byId.has(record.id)) byId.set(record.id, record);
-    return [...byId.values()];
+  let added = 0;
+  const records = await mutateCloudRecords((current) => {
+    const merged = mergeRecords(current, incoming);
+    added = merged.added;
+    return merged.records;
   });
+  return { records, added };
 }
 
 
@@ -416,7 +500,7 @@ export async function cloudRequestPasswordReset(email: string, redirectTo: strin
 
   const endpoint = new URL(`${SUPABASE_URL}/auth/v1/recover`);
   endpoint.searchParams.set("redirect_to", redirectUrl.toString());
-  const response = await fetch(endpoint.toString(), {
+  const response = await cloudFetch(endpoint.toString(), {
     method: "POST",
     headers: authHeaders(),
     body: JSON.stringify({ email: cleanedEmail }),
@@ -434,7 +518,7 @@ export async function cloudUpdatePassword(accessToken: string, newPassword: stri
   if (!accessToken) throw new Error("El enlace de recuperación no es válido o ha caducado. Solicita uno nuevo.");
   if (newPassword.length < 8) throw new Error("La contraseña debe tener al menos 8 caracteres.");
 
-  const response = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+  const response = await cloudFetch(`${SUPABASE_URL}/auth/v1/user`, {
     method: "PUT",
     headers: authHeaders(accessToken),
     body: JSON.stringify({ password: newPassword }),

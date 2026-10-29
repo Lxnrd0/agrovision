@@ -1,5 +1,6 @@
 import {
   cp,
+  access,
   mkdir,
   readdir,
   readFile,
@@ -31,7 +32,7 @@ await rm(join(target, "app/api"), { recursive: true, force: true });
 await symlink(join(root, "node_modules"), join(target, "node_modules"), "dir");
 execFileSync(
   process.execPath,
-  [join(root, "node_modules/next/dist/bin/next"), "build"],
+  [join(root, "node_modules/next/dist/bin/next"), "build", "--webpack"],
   {
     cwd: target,
     stdio: "inherit",
@@ -82,7 +83,13 @@ await build({
   target: "es2022",
   minify: true,
 });
-await cp(".openai/hosting.json", "dist/.openai/hosting.json");
+try {
+  await access(".openai/hosting.json");
+  await cp(".openai/hosting.json", "dist/.openai/hosting.json");
+} catch (error) {
+  if (error.code !== "ENOENT") throw error;
+  console.log("Sin configuración de hosting: se generó el Worker; falta configurar un destino para publicarlo.");
+}
 console.log(
   `Sites Worker listo: ${Object.keys(assets).length} recursos y API de visión.`,
 );

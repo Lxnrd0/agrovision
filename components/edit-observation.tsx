@@ -116,7 +116,7 @@ export default function EditObservation({
         );
       }
 
-      validateRecord(updated, records);
+      validateRecord(updated, records, { allowLegacy: true });
       await onSave(updated);
       onClose();
     } catch (error) {

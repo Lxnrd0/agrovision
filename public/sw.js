@@ -1,9 +1,17 @@
-const CACHE = "agrovision-v4";
+const CACHE = "agrovision-v5";
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches
       .open(CACHE)
-      .then((cache) => cache.addAll(["/", "/icon.svg", "/radish-sample.jpg"]))
+      .then(async (cache) => {
+        await cache.addAll(["/", "/icon.svg", "/radish-sample.jpg", "/terranova-icon.png", "/terranova-logo.png"]);
+        // The first page loads its JS before this worker controls it. Cache
+        // those initial dependencies as well, so the first offline reload boots.
+        const html = await (await cache.match("/")).text();
+        const paths = [...new Set([...html.matchAll(/(?:src|href)="([^" ]*\/_next\/static\/[^" ]+)"/g)]
+          .map((match) => match[1].replaceAll("&amp;", "&")))];
+        await cache.addAll(paths);
+      })
       .then(() => self.skipWaiting()),
   );
 });
@@ -51,7 +59,7 @@ self.addEventListener("fetch", (event) => {
   }
   if (
     url.pathname.startsWith("/_next/static/") ||
-    ["/icon.svg", "/radish-sample.jpg"].includes(url.pathname)
+    ["/icon.svg", "/radish-sample.jpg", "/terranova-icon.png", "/terranova-logo.png"].includes(url.pathname)
   )
     event.respondWith(
       caches.match(event.request).then(
