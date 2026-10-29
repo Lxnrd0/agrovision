@@ -1,10 +1,9 @@
-
 name: AgroVision CI
 
 on:
   push:
     branches:
-      - fix/gemini-default-model
+      - main
   pull_request:
     branches:
       - main
@@ -24,11 +23,11 @@ jobs:
       - name: Configure Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: "24"
           cache: npm
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --include=dev
 
       - name: Check TypeScript
         run: npm run typecheck
