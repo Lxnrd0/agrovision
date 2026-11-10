@@ -8,6 +8,8 @@ const env = () => ({
   GEMINI_API_KEY: process.env.GEMINI_API_KEY,
   GEMINI_MODEL: process.env.GEMINI_MODEL,
   ANALYSIS_ACCESS_TOKEN: process.env.ANALYSIS_ACCESS_TOKEN,
+  SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
+  SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
 });
 export async function GET() {
   return status(env());

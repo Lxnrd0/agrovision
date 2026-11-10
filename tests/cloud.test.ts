@@ -88,3 +88,95 @@ test("cloud reads all rows when the server caps pages below the requested size",
   };
   assert.equal((await cloud.readCloudRecords()).length, 235);
 });
+
+test("parallel session refreshes share one request and keep the rotated token", async () => {
+  const expired = {
+    access_token: "expired-access",
+    refresh_token: "expired-refresh",
+    expires_at: Math.floor(Date.now() / 1000) - 30,
+    user: { id: "owner" },
+  };
+  memory.set("agrovision-cloud-session-v2", JSON.stringify(expired));
+  let refreshCalls = 0;
+  globalThis.fetch = async (input) => {
+    assert.match(String(input), /grant_type=refresh_token/);
+    refreshCalls += 1;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    return Response.json({
+      access_token: "fresh-access",
+      refresh_token: "fresh-refresh",
+      expires_in: 3600,
+      user: { id: "owner" },
+    });
+  };
+
+  const [first, second] = await Promise.all([
+    cloud.getCloudSession(),
+    cloud.getCloudSession(),
+  ]);
+
+  assert.equal(refreshCalls, 1);
+  assert.equal(first?.access_token, "fresh-access");
+  assert.equal(second?.access_token, "fresh-access");
+  assert.equal(JSON.parse(memory.get("agrovision-cloud-session-v2") || "{}").refresh_token, "fresh-refresh");
+});
+
+test("temporary refresh failures preserve the stored session for retry", async () => {
+  const expired = {
+    access_token: "expired-access",
+    refresh_token: "still-valid-refresh",
+    expires_at: Math.floor(Date.now() / 1000) - 30,
+    user: { id: "owner" },
+  };
+  memory.set("agrovision-cloud-session-v2", JSON.stringify(expired));
+  globalThis.fetch = async () => new Response("service unavailable", { status: 503 });
+
+  await assert.rejects(cloud.getCloudSession(), /No se pudo renovar la sesión/);
+  assert.ok(memory.has("agrovision-cloud-session-v2"));
+  assert.equal(JSON.parse(memory.get("agrovision-cloud-session-v2") || "{}").refresh_token, "still-valid-refresh");
+});
+
+test("invalid refresh tokens clear only the matching expired session", async () => {
+  const expired = {
+    access_token: "expired-access",
+    refresh_token: "invalid-refresh",
+    expires_at: Math.floor(Date.now() / 1000) - 30,
+    user: { id: "owner" },
+  };
+  memory.set("agrovision-cloud-session-v2", JSON.stringify(expired));
+  globalThis.fetch = async () => Response.json({ error: "invalid_grant" }, { status: 400 });
+
+  assert.equal(await cloud.getCloudSession(), null);
+  assert.equal(memory.has("agrovision-cloud-session-v2"), false);
+});
+
+
+test("sign-out during a pending refresh never resurrects the previous session", async () => {
+  const expired = {
+    access_token: "expired-access",
+    refresh_token: "refresh-before-signout",
+    expires_at: Math.floor(Date.now() / 1000) - 30,
+    user: { id: "owner" },
+  };
+  memory.set("agrovision-cloud-session-v2", JSON.stringify(expired));
+
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  globalThis.fetch = async () => {
+    await gate;
+    return Response.json({
+      access_token: "late-access",
+      refresh_token: "late-refresh",
+      expires_in: 3600,
+      user: { id: "owner" },
+    });
+  };
+
+  const pending = cloud.getCloudSession();
+  await Promise.resolve();
+  memory.delete("agrovision-cloud-session-v2");
+  release();
+
+  assert.equal(await pending, null);
+  assert.equal(memory.has("agrovision-cloud-session-v2"), false);
+});

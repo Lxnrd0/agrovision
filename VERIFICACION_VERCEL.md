@@ -1,4 +1,4 @@
-# AgroVision 1.1.1 — comprobaciones del paquete para Vercel
+# AgroVision 1.1.2 — comprobaciones del paquete para Vercel
 
 Fecha: 28/10/2026. Este documento actualiza el informe de auditoría anterior.
 
@@ -38,7 +38,7 @@ Este paquete compila sin errores en el entorno indicado. No se ha desplegado des
 
 No hay prueba visual de escritorio/móvil: Chromium no estuvo disponible en esta sesión. No hay llamadas reales a Gemini/OpenAI ni Supabase. La verificación de modelos, cuota, acceso de usuarios, RLS, correo y bucket exige los servicios configurados por el usuario.
 
-Persisten los límites de la auditoría original: restauraciones múltiples en nube no son una transacción única; altas simultáneas con distintos IDs para la misma planta/fecha necesitan una restricción de servidor; la API de IA tiene un token opcional separado del login; el modo nube no tiene cola offline; la precisión agronómica no está validada. No se sustituyó ninguna integración real con simulaciones.
+Persisten los límites de la auditoría original: restauraciones múltiples en nube no son una transacción única; altas simultáneas con distintos IDs para la misma planta/fecha necesitan una restricción de servidor; el modo nube no tiene cola offline; la precisión agronómica no está validada. No se sustituyó ninguna integración real con simulaciones.
 
 ## Fuentes oficiales consultadas para la configuración
 
@@ -47,3 +47,10 @@ Persisten los límites de la auditoría original: restauraciones múltiples en n
 - Vercel: máximo de cuerpo de función: https://vercel.com/docs/errors/function_payload_too_large
 - Next: variables públicas fijadas durante el build: https://nextjs.org/docs/pages/guides/environment-variables
 - GitHub: editor de varios archivos: https://docs.github.com/en/codespaces/the-githubdev-web-based-editor
+
+
+## Anexo de cambios 1.1.2 — 10/11/2026
+
+Se reforzó la API de análisis para exigir Supabase Auth validado por el servidor o un token compartido aleatorio de al menos 32 caracteres. El Dashboard envía automáticamente el access token de Supabase. El límite se aplica antes de procesar imágenes y ya no usa `X-Client-ID` como identidad; sigue siendo un límite en memoria por instancia y no sustituye una solución distribuida. Se endureció la validación Base64/firma de imagen. La renovación de sesión de Supabase ahora comparte una única petición por pestaña y conserva la sesión ante fallos temporales; un cierre de sesión durante la renovación no puede restaurarla. Se agregaron once pruebas a la suite (54 pruebas definidas en total).
+
+**Verificación de esta revisión:** se procesaron sintácticamente 31 archivos TypeScript/TSX con cero errores de sintaxis. La suite completa, typecheck y build **no pudieron ejecutarse en este entorno**: el runtime disponible es Node 22.16.0 (el proyecto exige Node 24.x) y el entorno no puede resolver `registry.npmjs.org`, por lo que `npm ci` agotó el tiempo. No se afirma que estas pruebas estén aprobadas. Antes de integrar esta versión, en Node 24 ejecutar `npm ci`, `npm run verify` y comprobar la autenticación real con un proyecto Supabase de pruebas.

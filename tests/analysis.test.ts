@@ -2,23 +2,41 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { analyze, status } from "../lib/analysis-server";
+import { analyze, status, type EngineEnv } from "../lib/analysis-server";
 import { demoDiagnosis } from "../lib/demo";
 
 const DEFAULT_GEMINI_MODEL = "gemini-3.8-flash";
 
+const TEST_TOKEN = "agrovision-test-token-0123456789abcdef";
+let requestSequence = 0;
+
+const testEnv = (env: EngineEnv): EngineEnv => ({
+  ...env,
+  ANALYSIS_ACCESS_TOKEN: TEST_TOKEN,
+});
+
 const request = (
   body: unknown,
   extra: Record<string, string> = {},
-) =>
-  new Request("https://agro.test/api/analyze-crop", {
+  bearerToken: string | null = TEST_TOKEN,
+) => {
+  const headers = new Headers({ "Content-Type": "application/json" });
+  if (bearerToken) headers.set("Authorization", `Bearer ${bearerToken}`);
+  for (const [key, value] of Object.entries(extra)) headers.set(key, value);
+
+  const hasProxyIp = ["x-real-ip", "cf-connecting-ip", "x-forwarded-for"]
+    .some((key) => headers.has(key));
+  if (!hasProxyIp) {
+    requestSequence += 1;
+    headers.set("x-real-ip", `192.0.2.${(requestSequence % 250) + 1}`);
+  }
+
+  return new Request("https://agro.test/api/analyze-crop", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...extra,
-    },
+    headers,
     body: JSON.stringify(body),
   });
+};
 
 const image =
   "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEAYABgAAD/2Q==";
@@ -26,7 +44,7 @@ const image =
 test("status exposes configuration without revealing secrets", async () => {
   const result = await status({
     OPENAI_API_KEY: "secret",
-    ANALYSIS_ACCESS_TOKEN: "private",
+    ANALYSIS_ACCESS_TOKEN: TEST_TOKEN,
   }).json();
 
   assert.equal(result.configured, true);
@@ -47,20 +65,149 @@ test("rejects cross-origin requests and invalid access tokens", async () => {
       { image },
       { origin: "https://other.test" },
     ),
-    { OPENAI_API_KEY: "test" },
+    testEnv({ OPENAI_API_KEY: "test" }),
   );
 
   assert.equal(crossOrigin.status, 403);
 
   const unauthorized = await analyze(
-    request({ image }),
-    {
-      OPENAI_API_KEY: "test",
-      ANALYSIS_ACCESS_TOKEN: "required",
-    },
+    request({ image }, {}, "invalid-token"),
+    testEnv({ OPENAI_API_KEY: "test" }),
   );
 
   assert.equal(unauthorized.status, 401);
+});
+
+test("analysis fails closed when no authentication mechanism is configured", async () => {
+  const response = await analyze(request({ image }), { OPENAI_API_KEY: "test" });
+  assert.equal(response.status, 503);
+  assert.equal((await response.json()).code, "AUTH_NOT_CONFIGURED");
+});
+
+test("rejects short shared access tokens as insecure configuration", async () => {
+  const response = await analyze(
+    request({ image }),
+    { OPENAI_API_KEY: "test", ANALYSIS_ACCESS_TOKEN: "short" },
+  );
+  assert.equal(response.status, 503);
+  assert.equal((await response.json()).code, "AUTH_MISCONFIGURED");
+});
+
+test("local mode can use the shared token when Supabase is also configured", async () => {
+  const original = globalThis.fetch;
+  let authEndpointCalled = false;
+  globalThis.fetch = async (input) => {
+    if (String(input).endsWith("/auth/v1/user")) {
+      authEndpointCalled = true;
+      return new Response("", { status: 401 });
+    }
+    return Response.json({ choices: [{ finish_reason: "stop", message: { content: JSON.stringify(demoDiagnosis) } }] });
+  };
+  try {
+    const response = await analyze(
+      request({ image }),
+      {
+        OPENAI_API_KEY: "test",
+        SUPABASE_URL: "https://test.supabase.co",
+        SUPABASE_ANON_KEY: "public-test-key",
+        ANALYSIS_ACCESS_TOKEN: TEST_TOKEN,
+      },
+    );
+    assert.equal(response.status, 200);
+    assert.equal(authEndpointCalled, false);
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+test("validates Supabase access tokens before calling the AI provider", async () => {
+  const original = globalThis.fetch;
+  const calls: string[] = [];
+  globalThis.fetch = async (input) => {
+    calls.push(String(input));
+    if (String(input).endsWith("/auth/v1/user")) return Response.json({ id: "verified-user-123" });
+    return Response.json({ choices: [{ finish_reason: "stop", message: { content: JSON.stringify(demoDiagnosis) } }] });
+  };
+  try {
+    const response = await analyze(
+      request({ image }, {}, "supabase-access-token"),
+      { OPENAI_API_KEY: "test", SUPABASE_URL: "https://test.supabase.co", SUPABASE_ANON_KEY: "public-test-key" },
+    );
+    assert.equal(response.status, 200);
+    assert.ok(calls.some((url) => url.endsWith("/auth/v1/user")));
+    assert.ok(calls.some((url) => url.includes("api.openai.com")));
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+test("Supabase rate limits are keyed by the authenticated user, not client headers", async () => {
+  const original = globalThis.fetch;
+  let providerCalls = 0;
+  globalThis.fetch = async (input) => {
+    if (String(input).endsWith("/auth/v1/user")) return Response.json({ id: "rate-test-user" });
+    providerCalls += 1;
+    return Response.json({ error: { message: "provider busy" } }, { status: 503 });
+  };
+  try {
+    for (let index = 0; index < 10; index += 1) {
+      const response = await analyze(
+        request({ image }, {
+          "x-real-ip": `198.51.100.${index + 1}`,
+          "x-client-id": `untrusted-client-${index}`,
+        }, "valid-user-jwt"),
+        { OPENAI_API_KEY: "test", SUPABASE_URL: "https://test.supabase.co", SUPABASE_ANON_KEY: "public-test-key" },
+      );
+      assert.equal(response.status, 503);
+    }
+
+    const limited = await analyze(
+      request({ image }, {
+        "x-real-ip": "198.51.100.99",
+        "x-client-id": "another-untrusted-client",
+      }, "valid-user-jwt"),
+      { OPENAI_API_KEY: "test", SUPABASE_URL: "https://test.supabase.co", SUPABASE_ANON_KEY: "public-test-key" },
+    );
+    assert.equal(limited.status, 429);
+    assert.equal(providerCalls, 10);
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+test("invalid Supabase sessions are rejected before contacting the AI provider", async () => {
+  const original = globalThis.fetch;
+  let providerCalled = false;
+  globalThis.fetch = async (input) => {
+    if (String(input).endsWith("/auth/v1/user")) return new Response("", { status: 401 });
+    providerCalled = true;
+    return Response.json({});
+  };
+  try {
+    const response = await analyze(
+      request({ image }, {}, "invalid-supabase-token"),
+      { OPENAI_API_KEY: "test", SUPABASE_URL: "https://test.supabase.co", SUPABASE_ANON_KEY: "public-test-key" },
+    );
+    assert.equal(response.status, 401);
+    assert.equal(providerCalled, false);
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+test("Supabase Auth outages fail closed with a retryable server error", async () => {
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => { throw new Error("network unavailable"); };
+  try {
+    const response = await analyze(
+      request({ image }, {}, "supabase-access-token"),
+      { OPENAI_API_KEY: "test", SUPABASE_URL: "https://test.supabase.co", SUPABASE_ANON_KEY: "public-test-key" },
+    );
+    assert.equal(response.status, 503);
+    assert.equal((await response.json()).code, "AUTH_PROVIDER_UNAVAILABLE");
+  } finally {
+    globalThis.fetch = original;
+  }
 });
 
 test("rejects invalid image signatures before calling the provider", async () => {
@@ -68,7 +215,7 @@ test("rejects invalid image signatures before calling the provider", async () =>
     request({
       image: "data:image/jpeg;base64,aGVsbG8=",
     }),
-    { OPENAI_API_KEY: "test" },
+    testEnv({ OPENAI_API_KEY: "test" }),
   );
 
   assert.equal(response.status, 400);
@@ -104,7 +251,7 @@ test("OpenAI result preserves observations and removes unscaled diameter", async
   try {
     const response = await analyze(
       request({ image, crop: "Rábano" }),
-      { OPENAI_API_KEY: "test" },
+      testEnv({ OPENAI_API_KEY: "test" }),
     );
 
     assert.equal(response.status, 200);
@@ -143,7 +290,7 @@ test("malformed provider output is not published as a diagnosis", async () => {
   try {
     const response = await analyze(
       request({ image }),
-      { OPENAI_API_KEY: "test" },
+      testEnv({ OPENAI_API_KEY: "test" }),
     );
 
     assert.equal(response.status, 502);
@@ -161,7 +308,7 @@ test("provider quota failure returns a useful error", async () => {
   try {
     const response = await analyze(
       request({ image }),
-      { OPENAI_API_KEY: "test" },
+      testEnv({ OPENAI_API_KEY: "test" }),
     );
 
     assert.equal(response.status, 429);
@@ -218,7 +365,7 @@ test("uploaded photographs reach the OpenAI provider", async () => {
             "cf-connecting-ip": `photo-${index}`,
           },
         ),
-        { OPENAI_API_KEY: "test" },
+        testEnv({ OPENAI_API_KEY: "test" }),
       );
 
       assert.equal(response.status, 200);
@@ -259,7 +406,7 @@ test("quota, rate limits and invalid credentials remain distinguishable", async 
           { image },
           { "cf-connecting-ip": expected },
         ),
-        { OPENAI_API_KEY: "test" },
+        testEnv({ OPENAI_API_KEY: "test" }),
       );
 
       const result = await response.json();
@@ -343,7 +490,7 @@ test("Gemini receives the image and returns a validated diagnosis", async () => 
   try {
     const response = await analyze(
       request({ image }),
-      { GEMINI_API_KEY: "gemini-test" },
+      testEnv({ GEMINI_API_KEY: "gemini-test" }),
     );
 
     assert.equal(response.status, 200);
@@ -384,17 +531,17 @@ test("an explicit Gemini model overrides the default", async () => {
 });
 
 test("rejects unsupported method, content type and oversized bodies", async () => {
-  const env = { OPENAI_API_KEY: "test" };
+  const env = testEnv({ OPENAI_API_KEY: "test" });
   assert.equal((await analyze(new Request("https://agro.test/api/analyze-crop"), env)).status, 405);
   assert.equal((await analyze(new Request("https://agro.test/api/analyze-crop", { method: "POST", body: "{}" }), env)).status, 415);
-  assert.equal((await analyze(request({ image: "x".repeat(7_100_001) }), env)).status, 400);
+  assert.equal((await analyze(request({ image: "x".repeat(7_100_001) }), env)).status, 413);
 });
 
 test("provider timeout is explicit and never returns a demo diagnosis", async () => {
   const original = globalThis.fetch;
   globalThis.fetch = async () => { throw new DOMException("timeout", "TimeoutError"); };
   try {
-    const response = await analyze(request({ image }, { "x-client-id": "timeout-test" }), { OPENAI_API_KEY: "test" });
+    const response = await analyze(request({ image }, { "x-real-ip": "203.0.113.51" }), testEnv({ OPENAI_API_KEY: "test" }));
     assert.equal(response.status, 504);
     const body = await response.json();
     assert.equal(body.code, "ANALYSIS_TIMEOUT");
@@ -407,10 +554,10 @@ test("rate limiter rejects the eleventh request and advertises retry time", asyn
   globalThis.fetch = async () => Response.json({ error: { message: "busy" } }, { status: 503 });
   try {
     for (let i = 0; i < 10; i++) {
-      const result = await analyze(request({ image }, { "x-client-id": "rate-test" }), { OPENAI_API_KEY: "test" });
+      const result = await analyze(request({ image }, { "x-real-ip": "203.0.113.50" }), testEnv({ OPENAI_API_KEY: "test" }));
       assert.equal(result.status, 503);
     }
-    const response = await analyze(request({ image }, { "x-client-id": "rate-test" }), { OPENAI_API_KEY: "test" });
+    const response = await analyze(request({ image }, { "x-real-ip": "203.0.113.50" }), testEnv({ OPENAI_API_KEY: "test" }));
     assert.equal(response.status, 429);
     assert.ok(Number(response.headers.get("Retry-After")) > 0);
   } finally { globalThis.fetch = original; }
@@ -421,7 +568,7 @@ test("rejects image payloads above the Vercel-safe image limit before contacting
   let contacted = false;
   globalThis.fetch = async () => { contacted = true; throw new Error("must not call provider"); };
   try {
-    const response = await analyze(request({ image: "data:image/jpeg;base64,/9j/" + "A".repeat(4_000_000) }), { OPENAI_API_KEY: "test" });
+    const response = await analyze(request({ image: "data:image/jpeg;base64,/9j/" + "A".repeat(4_000_000) }), testEnv({ OPENAI_API_KEY: "test" }));
     assert.equal(response.status, 400);
     assert.equal(contacted, false);
   } finally { globalThis.fetch = original; }
