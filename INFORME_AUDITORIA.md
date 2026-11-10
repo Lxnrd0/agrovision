@@ -143,3 +143,12 @@ Entrar a http://localhost:3000. Para IA y Supabase seguir README.md; no hay secr
 - Avisos de dependencias: resultado real de npm audit del lockfile inicial y final; los avisos se atribuyen a versiones instaladas, no a ataques ejecutados.
 
 El ZIP excluye node_modules, .next, dist, copias temporales del adaptador, caches, tsbuildinfo y archivos .env privados. Incluye código, recursos públicos, pruebas, lockfile, guía, ejemplo de variables y script SQL para completar la configuración de nube.
+
+
+## Anexo de seguridad — 10 de noviembre de 2026
+
+Sobre la versión 1.1.2 se reforzó el endpoint de análisis: ahora exige una sesión de Supabase validada por Auth o un token compartido de al menos 32 caracteres. La identidad para el límite de solicitudes procede del ID validado de Supabase o de una dirección de proxy; ya no se usa `X-Client-ID` como identidad de seguridad. La limitación se ejecuta antes de leer el cuerpo y el mapa de contadores tiene una cota de memoria. Se valida la codificación Base64 y la firma binaria JPEG/PNG/WEBP. El Dashboard envía automáticamente el access token de la sesión Supabase.
+
+También se añadió renovación de sesión single-flight dentro de una pestaña. Los fallos temporales de red/servidor no borran la sesión guardada y una renovación tardía no puede resucitar una sesión cerrada. Se añadieron pruebas para autenticación Supabase, configuración insegura, fallos de Auth y renovación concurrente.
+
+**Estado de validación de este anexo:** revisión sintáctica de los archivos TypeScript/TSX: 31 archivos procesados, cero diagnósticos sintácticos. No se pudo ejecutar `npm ci`, `npm test`, `npm run typecheck` ni `npm run build` en el entorno de preparación porque el entorno dispone de Node 22.16.0 (el proyecto requiere Node 24.x) y no resuelve `registry.npmjs.org`. Por tanto, estos cambios no deben considerarse certificados por build/pruebas hasta ejecutar `npm run verify` en Node 24 con dependencias instalables. La limitación del rate limit por instancia y la necesidad de probar RLS/Storage contra un proyecto Supabase real permanecen.

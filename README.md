@@ -24,12 +24,15 @@ GEMINI_API_KEY=
 GEMINI_MODEL=gemini-3.8-flash
 OPENAI_API_KEY=
 OPENAI_MODEL=gpt-4o
+# Solo si NO usas Supabase: token aleatorio de al menos 32 caracteres.
 ANALYSIS_ACCESS_TOKEN=
 ```
 
-Gemini tiene prioridad si hay dos claves; la selección depende de la configuración del servidor. No hay conmutación automática a otro proveedor ni a demostraciones cuando falla una llamada real. Las claves privadas nunca deben llevar `NEXT_PUBLIC_`. Si se define `ANALYSIS_ACCESS_TOKEN`, escribir el código en el panel de análisis; permanece en memoria del navegador.
+Gemini tiene prioridad si hay dos claves; la selección depende de la configuración del servidor. No hay conmutación automática a otro proveedor ni a demostraciones cuando falla una llamada real. Las claves privadas nunca deben llevar `NEXT_PUBLIC_`.
 
-El indicador de configuración solo confirma la presencia de una clave, no su validez o cuota. El servidor valida JSON y firma de imagen y envía la foto al proveedor. Zod comprueba el resultado. Timeout del proveedor: 55 segundos; cliente: 65 segundos. Los errores de cuota, autenticación, disponibilidad, formato y tiempo de espera se muestran expresamente.
+La API de análisis siempre exige autenticación. Si Supabase está configurado, el servidor valida el `access_token` contra Supabase Auth y deriva el límite por el ID real del usuario. También puedes configurar `ANALYSIS_ACCESS_TOKEN` para habilitar análisis en modo local, incluso si las variables de Supabase están presentes. Si no usas Supabase, configura `ANALYSIS_ACCESS_TOKEN` con al menos 32 caracteres aleatorios (por ejemplo, `node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"`) y escribe el mismo código en el panel de análisis. No uses tokens cortos ni los publiques. La clave de acceso solo permanece en memoria del navegador.
+
+El indicador de configuración confirma que hay una clave de proveedor y un mecanismo de autenticación configurado; no confirma validez, saldo ni cuota. El servidor valida JSON, tamaño y firma binaria de la imagen y envía la foto al proveedor. Zod comprueba el resultado. Timeout del proveedor: 55 segundos; cliente: 65 segundos. Los errores de cuota, autenticación, disponibilidad, formato y tiempo de espera se muestran expresamente. El limitador de diez solicitudes por minuto es local a cada instancia; para una publicación de alto tráfico debe complementarse con limitación distribuida del proveedor de hosting.
 
 No se afirma una prueba real de proveedores en esta entrega. La precisión agronómica no está validada. Una foto no confirma una enfermedad; la confianza es una autoestimación no calibrada. El diámetro estimado se descarta si no se declara una escala, y el modelo debe comprobar que sea visible.
 
@@ -50,7 +53,7 @@ Hay registro, login, cierre de sesión y recuperación de contraseña mediante S
 
 La primera cuenta elegible puede migrar las observaciones reales del navegador; se conserva un marcador de propietario para no copiarlas automáticamente a otra cuenta. Una importación manual de respaldo es una acción distinta y explícita.
 
-La API de IA y la cuenta Supabase tienen controles separados: el login por sí solo no protege `/api/analyze-crop`. Para exponer un servidor con coste, definir el token de análisis y añadir una política de acceso y limitación adecuada al alojamiento. El limitador incluido (10 solicitudes/minuto/cliente/instancia) no es un control distribuido resistente al abuso.
+La API de IA acepta la sesión de Supabase validada en el servidor cuando la nube está configurada. En modo local exige el token compartido seguro descrito arriba. El limitador incluido (10 solicitudes/minuto/usuario autenticado o IP/instancia) no es un control distribuido resistente al abuso.
 
 ## Funciones implementadas
 
@@ -72,6 +75,8 @@ En producción el service worker guarda HTML, JS/CSS iniciales y recursos de mar
 No hay sensores IoT, diagnóstico agronómico confirmado, trabajo colaborativo entre cuentas ni análisis local de imágenes. El entorno no permitió una prueba visual en navegador; consultar `INFORME_AUDITORIA.md` y `VERIFICACION_VERCEL.md` para límites y pendientes.
 
 ## Verificación y producción
+
+Consulta `QA_STATUS.md` para distinguir las comprobaciones realmente ejecutadas de las que aún requieren Node 24 y credenciales/servicios reales.
 
 ```bash
 npm run typecheck

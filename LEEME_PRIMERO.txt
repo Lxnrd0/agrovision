@@ -7,7 +7,7 @@ AGROVISION / TERRANOVA — PROYECTO REVISADO
 5. Abre http://localhost:3000
 6. Sin Supabase, pulsa Continuar solo en este dispositivo.
 
-Para IA real o cuenta en la nube: sigue README.md y .env.example.
+Para IA real o cuenta en la nube: sigue README.md y .env.example. La API de IA exige sesión Supabase o un token local aleatorio de 32+ caracteres.
 No se incluyen credenciales. No necesitas claves para el registro manual.
 Para producción: npm run build y después npm start.
 
