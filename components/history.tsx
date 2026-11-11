@@ -9,7 +9,6 @@ import {
   Leaf,
   CalendarDays,
   MapPin,
-  Ruler,
   NotebookPen,
   Pencil,
 } from "lucide-react";
@@ -261,53 +260,16 @@ export default function History({
                     Rabanito
                   </h3>
 
-                  <p>
+                  <p className="record-treatment">
                     {record.fertilizer}
                     {" · "}
                     {record.dose || "Dosis no registrada"}
                   </p>
 
-                  <p>
+                  <p className="record-age">
                     {plantAge === null
                       ? "Fecha de siembra no válida"
                       : `${plantAge} días desde la siembra`}
-                  </p>
-
-                  <div
-                    className="record-values"
-                    style={{ flexWrap: "wrap", gap: 12 }}
-                  >
-                    <span>
-                      <Ruler size={16} />
-                      <strong>
-                        {value(record, "heightCm") ?? "—"}
-                      </strong>
-                      {" "}cm de altura
-                    </span>
-
-                    <span>
-                      <Leaf size={16} />
-                      <strong>
-                        {value(record, "leafCount") ?? "—"}
-                      </strong>
-                      {" "}hojas
-                    </span>
-
-                    <span>
-                      <Ruler size={16} />
-                      <strong>
-                        {value(record, "diameterCm") ?? "—"}
-                      </strong>
-                      {" "}cm de diámetro
-                    </span>
-                  </div>
-
-                  <p className="muted">
-                    Altura: {sourceLabel(record, "heightCm")}
-                    <br />
-                    Hojas: {sourceLabel(record, "leafCount")}
-                    <br />
-                    Diámetro: {sourceLabel(record, "diameterCm")}
                   </p>
 
                   <div className="record-foot">
