@@ -1275,30 +1275,45 @@ textarea::placeholder {
 }
 .record-image {
   height: 175px;
+  min-height: 175px;
   background: var(--inset);
   position: relative;
   display: grid;
   place-items: center;
+  overflow: hidden;
+  isolation: isolate;
   color: var(--green-text);
 }
-.record-image img {
+.record-image > .record-photo {
+  display: block;
+  position: absolute;
+  inset: 0;
+  z-index: 0;
   width: 100%;
   height: 100%;
+  max-width: 100%;
   object-fit: cover;
+  object-position: center;
+}
+.record-image > svg {
+  position: relative;
+  z-index: 1;
 }
 .record-image > .badge {
   position: absolute;
+  z-index: 2;
   top: 13px;
   left: 13px;
   background: #172119dd;
   font-size: 10px;
   color: #b0eb81;
+  pointer-events: none;
 }
 .record-image-delete {
   position: absolute;
   top: 10px;
   right: 10px;
-  z-index: 2;
+  z-index: 3;
   width: 34px;
   height: 34px;
   display: grid;
@@ -1317,6 +1332,7 @@ textarea::placeholder {
 }
 .demo-label {
   position: absolute;
+  z-index: 2;
   bottom: 12px;
   right: 12px;
   font-size: 8px;
@@ -1327,7 +1343,10 @@ textarea::placeholder {
   border-radius: 3px;
 }
 .record-body {
+  position: relative;
+  min-width: 0;
   padding: 17px;
+  background: var(--panel);
 }
 .record-meta {
   display: flex;
@@ -1347,7 +1366,18 @@ textarea::placeholder {
 .record-body > p {
   font-size: 12px;
   color: var(--muted);
-  margin: 3px 0 15px;
+  margin: 5px 0 10px;
+}
+.record-body > .record-treatment {
+  margin-top: 5px;
+  margin-bottom: 8px;
+  line-height: 1.5;
+}
+.record-body > .record-age {
+  margin-top: 0;
+  margin-bottom: 0;
+  color: var(--muted);
+  line-height: 1.5;
 }
 .record-values {
   display: flex;
@@ -1374,8 +1404,11 @@ textarea::placeholder {
 .record-foot {
   display: flex;
   align-items: center;
-  gap: 7px;
-  margin-top: 12px;
+  gap: 9px;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  min-width: 0;
 }
 .person-avatar {
   width: 24px;
@@ -1389,9 +1422,18 @@ textarea::placeholder {
   flex-shrink: 0;
 }
 .record-foot > span:nth-child(2) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 10px;
   color: var(--muted);
   margin-right: auto;
+}
+.record-foot .icon-button {
+  width: 36px;
+  height: 36px;
+  margin: -4px -5px -4px 0;
 }
 .danger:hover {
   color: #f28f84;
@@ -1814,9 +1856,13 @@ td strong {
   margin: 11px 0;
 }
 .detail-image {
+  display: block;
   width: 100%;
+  max-width: 100%;
   height: 225px;
-  object-fit: cover;
+  object-fit: contain;
+  object-position: center;
+  background: var(--inset);
   border-radius: 7px;
 }
 .detail-tags {
@@ -2649,9 +2695,6 @@ textarea {
   .record-meta,
   .record-foot > span:nth-child(2) {
     font-size: 12px;
-  }
-  .record-values {
-    font-size: 13px;
   }
   .record-foot .icon-button {
     width: 37px;
