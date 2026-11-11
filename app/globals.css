@@ -1366,7 +1366,18 @@ textarea::placeholder {
 .record-body > p {
   font-size: 12px;
   color: var(--muted);
-  margin: 3px 0 15px;
+  margin: 5px 0 10px;
+}
+.record-body > .record-treatment {
+  margin-top: 5px;
+  margin-bottom: 8px;
+  line-height: 1.5;
+}
+.record-body > .record-age {
+  margin-top: 0;
+  margin-bottom: 0;
+  color: var(--muted);
+  line-height: 1.5;
 }
 .record-values {
   display: flex;
@@ -1393,8 +1404,11 @@ textarea::placeholder {
 .record-foot {
   display: flex;
   align-items: center;
-  gap: 7px;
-  margin-top: 12px;
+  gap: 9px;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  min-width: 0;
 }
 .person-avatar {
   width: 24px;
@@ -1408,9 +1422,18 @@ textarea::placeholder {
   flex-shrink: 0;
 }
 .record-foot > span:nth-child(2) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 10px;
   color: var(--muted);
   margin-right: auto;
+}
+.record-foot .icon-button {
+  width: 36px;
+  height: 36px;
+  margin: -4px -5px -4px 0;
 }
 .danger:hover {
   color: #f28f84;
@@ -2672,9 +2695,6 @@ textarea {
   .record-meta,
   .record-foot > span:nth-child(2) {
     font-size: 12px;
-  }
-  .record-values {
-    font-size: 13px;
   }
   .record-foot .icon-button {
     width: 37px;
