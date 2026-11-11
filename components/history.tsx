@@ -204,8 +204,11 @@ export default function History({
                 <div className="record-image">
                   {record.image ? (
                     <img
+                      className="record-photo"
                       src={record.image}
                       loading="lazy"
+                      decoding="async"
+                      draggable={false}
                       alt={`Rabanito ${record.plantId || "sin identificar"} en ${record.zone}`}
                     />
                   ) : (
@@ -374,8 +377,9 @@ export default function History({
             <img
               className="detail-image"
               src={details.image}
+              decoding="async"
+              draggable={false}
               alt={`Fotografía del rabanito ${details.plantId || "sin identificar"}`}
-              style={{ objectFit: "contain" }}
             />
           )}
 
