@@ -49,6 +49,7 @@ import {
   mergeBackupIntoCloud,
   mutateCloudRecords,
   readCloudRecords,
+  isProjectComparisonAdmin,
 } from "@/lib/cloud";
 
 import AnalysisPanel from "./analysis-panel";
@@ -81,9 +82,9 @@ const sections: {
   },
   {
     id: "comparison",
-    label: "Comparativa",
+    label: "Resumen general",
     icon: BarChart3,
-    short: "Comparativa",
+    short: "Resumen general",
   },
   {
     id: "protocols",
@@ -110,6 +111,7 @@ type DashboardProps = {
 export default function Dashboard({ userEmail, onLogout, localMode = false }: DashboardProps) {
   const cloudMode = !localMode && isCloudConfigured();
   const [view, setView] = useState<View>("analysis");
+  const [canViewTeamSummary, setCanViewTeamSummary] = useState(false);
   const [records, setRecords] = useState<FieldRecord[]>([]);
   const [ready, setReady] = useState(false);
 
@@ -153,6 +155,26 @@ export default function Dashboard({ userEmail, onLogout, localMode = false }: Da
   const closeToast = useCallback(() => {
     setToast(null);
   }, []);
+
+  useEffect(() => {
+    let active = true;
+    if (!cloudMode) {
+      setCanViewTeamSummary(false);
+      return () => { active = false; };
+    }
+    void isProjectComparisonAdmin()
+      .then((allowed) => {
+        if (!active) return;
+        setCanViewTeamSummary(allowed);
+        if (!allowed) setView((current) => current === "comparison" ? "analysis" : current);
+      })
+      .catch(() => {
+        if (!active) return;
+        setCanViewTeamSummary(false);
+        setView((current) => current === "comparison" ? "analysis" : current);
+      });
+    return () => { active = false; };
+  }, [cloudMode]);
 
   const refreshEngine = useCallback(async () => {
     try {
@@ -552,6 +574,12 @@ export default function Dashboard({ userEmail, onLogout, localMode = false }: Da
     setMenu(false);
   };
 
+  const visibleSections = sections
+    .filter((section) => section.id !== "comparison" || !cloudMode || canViewTeamSummary)
+    .map((section) => !cloudMode && section.id === "comparison"
+      ? { ...section, label: "Comparativa", short: "Comparativa" }
+      : section);
+
   return (
     <div className="app-shell">
       {menu && (
@@ -605,7 +633,7 @@ export default function Dashboard({ userEmail, onLogout, localMode = false }: Da
         <span className="nav-label">ESPACIO DE TRABAJO</span>
 
         <nav aria-label="Navegación principal">
-          {sections.map((section) => (
+          {visibleSections.map((section) => (
             <button
               type="button"
               key={section.id}
@@ -658,23 +686,26 @@ export default function Dashboard({ userEmail, onLogout, localMode = false }: Da
             <span>Espacio de trabajo</span>
             <ChevronRight size={14} />
             <strong>
-              {sections.find((section) => section.id === view)?.label}
+              {visibleSections.find((section) => section.id === view)?.label ?? "Inicio"}
             </strong>
           </div>
 
           <div className="topbar-right">
-            <span className={`engine-status ${busy ? "working" : ""}`}>
-              <span className="status-dot" />
-              {!online
-                ? "Sin conexión"
-                : busy
-                  ? "Motor de visión activo"
-                  : configured
-                    ? "Motor de visión listo"
-                    : "Motor de IA sin configurar"}
-            </span>
-
-            <span className="topbar-divider" />
+            {view !== "comparison" && (
+              <>
+                <span className={`engine-status ${busy ? "working" : ""}`}>
+                  <span className="status-dot" />
+                  {!online
+                    ? "Sin conexión"
+                    : busy
+                      ? "Motor de visión activo"
+                      : configured
+                        ? "Motor de visión listo"
+                        : "Motor de IA sin configurar"}
+                </span>
+                <span className="topbar-divider" />
+              </>
+            )}
 
             <button
               type="button"
@@ -699,6 +730,8 @@ export default function Dashboard({ userEmail, onLogout, localMode = false }: Da
         </header>
 
         <main>
+          {view !== "comparison" && (
+            <>
           <div className="page-heading">
             <div>
               <div className="page-eyebrow">
@@ -852,11 +885,13 @@ export default function Dashboard({ userEmail, onLogout, localMode = false }: Da
                 : "Preparando bitácora"}
             </span>
           </div>
+            </>
+          )}
 
           <div
             id="module-panel"
             role="region"
-            aria-label={sections.find((section) => section.id === view)?.label}
+            aria-label={visibleSections.find((section) => section.id === view)?.label ?? "Inicio"}
           >
             {view === "analysis" ? (
               <AnalysisPanel
@@ -882,7 +917,7 @@ export default function Dashboard({ userEmail, onLogout, localMode = false }: Da
               />
             ) : view === "comparison" ? (
               cloudMode
-                ? <TeamComparison records={records} />
+                ? <TeamComparison />
                 : <Comparison records={records} />
             ) : (
               <Protocols />
