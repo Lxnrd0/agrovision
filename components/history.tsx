@@ -9,6 +9,7 @@ import {
   Leaf,
   CalendarDays,
   MapPin,
+  Ruler,
   NotebookPen,
   Pencil,
 } from "lucide-react";
@@ -203,11 +204,8 @@ export default function History({
                 <div className="record-image">
                   {record.image ? (
                     <img
-                      className="record-photo"
                       src={record.image}
                       loading="lazy"
-                      decoding="async"
-                      draggable={false}
                       alt={`Rabanito ${record.plantId || "sin identificar"} en ${record.zone}`}
                     />
                   ) : (
@@ -260,16 +258,53 @@ export default function History({
                     Rabanito
                   </h3>
 
-                  <p className="record-treatment">
+                  <p>
                     {record.fertilizer}
                     {" · "}
                     {record.dose || "Dosis no registrada"}
                   </p>
 
-                  <p className="record-age">
+                  <p>
                     {plantAge === null
                       ? "Fecha de siembra no válida"
                       : `${plantAge} días desde la siembra`}
+                  </p>
+
+                  <div
+                    className="record-values"
+                    style={{ flexWrap: "wrap", gap: 12 }}
+                  >
+                    <span>
+                      <Ruler size={16} />
+                      <strong>
+                        {value(record, "heightCm") ?? "—"}
+                      </strong>
+                      {" "}cm de altura
+                    </span>
+
+                    <span>
+                      <Leaf size={16} />
+                      <strong>
+                        {value(record, "leafCount") ?? "—"}
+                      </strong>
+                      {" "}hojas
+                    </span>
+
+                    <span>
+                      <Ruler size={16} />
+                      <strong>
+                        {value(record, "diameterCm") ?? "—"}
+                      </strong>
+                      {" "}cm de diámetro
+                    </span>
+                  </div>
+
+                  <p className="muted">
+                    Altura: {sourceLabel(record, "heightCm")}
+                    <br />
+                    Hojas: {sourceLabel(record, "leafCount")}
+                    <br />
+                    Diámetro: {sourceLabel(record, "diameterCm")}
                   </p>
 
                   <div className="record-foot">
@@ -339,9 +374,8 @@ export default function History({
             <img
               className="detail-image"
               src={details.image}
-              decoding="async"
-              draggable={false}
               alt={`Fotografía del rabanito ${details.plantId || "sin identificar"}`}
+              style={{ objectFit: "contain" }}
             />
           )}
 

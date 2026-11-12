@@ -173,7 +173,7 @@ export default function AuthGate() {
     }
   }
 
-  if (screen === "local") return <Dashboard localMode />;
+  if (screen === "local") return <Dashboard />;
 
   if (screen === "setup") {
     return (

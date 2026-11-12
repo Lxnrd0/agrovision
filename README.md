@@ -1,4 +1,4 @@
-> Versión 1.1.1 preparada para GitHub web y Vercel. Las instrucciones de reemplazo y los códigos completos para copiar están en la carpeta superior del ZIP. Usa Node 24.x. La configuración `vercel.json` fija instalación y build de Next.js.
+> Versión final preparada para GitHub web y Vercel. Las instrucciones de reemplazo y los códigos completos para copiar están en la carpeta superior del ZIP. Usa Node 24.x. La configuración `vercel.json` fija instalación y build de Next.js.
 
 # AgroVision / TerraNova
 
@@ -24,22 +24,20 @@ GEMINI_API_KEY=
 GEMINI_MODEL=gemini-3.8-flash
 OPENAI_API_KEY=
 OPENAI_MODEL=gpt-4o
-# Solo si NO usas Supabase: token aleatorio de al menos 32 caracteres.
 ANALYSIS_ACCESS_TOKEN=
 ```
 
-Gemini tiene prioridad si hay dos claves; la selección depende de la configuración del servidor. No hay conmutación automática a otro proveedor ni a demostraciones cuando falla una llamada real. Las claves privadas nunca deben llevar `NEXT_PUBLIC_`.
+Gemini tiene prioridad si hay dos claves; la selección depende de la configuración del servidor. No hay conmutación automática a otro proveedor ni a demostraciones cuando falla una llamada real. Las claves privadas nunca deben llevar `NEXT_PUBLIC_`. Si se define `ANALYSIS_ACCESS_TOKEN`, escribir el código en el panel de análisis; permanece en memoria del navegador.
 
-La API de análisis siempre exige autenticación. Si Supabase está configurado, el servidor valida el `access_token` contra Supabase Auth y deriva el límite por el ID real del usuario. También puedes configurar `ANALYSIS_ACCESS_TOKEN` para habilitar análisis en modo local, incluso si las variables de Supabase están presentes. Si no usas Supabase, configura `ANALYSIS_ACCESS_TOKEN` con al menos 32 caracteres aleatorios (por ejemplo, `node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"`) y escribe el mismo código en el panel de análisis. No uses tokens cortos ni los publiques. La clave de acceso solo permanece en memoria del navegador.
-
-El indicador de configuración confirma que hay una clave de proveedor y un mecanismo de autenticación configurado; no confirma validez, saldo ni cuota. El servidor valida JSON, tamaño y firma binaria de la imagen y envía la foto al proveedor. Zod comprueba el resultado. Timeout del proveedor: 55 segundos; cliente: 65 segundos. Los errores de cuota, autenticación, disponibilidad, formato y tiempo de espera se muestran expresamente. El limitador de diez solicitudes por minuto es local a cada instancia; para una publicación de alto tráfico debe complementarse con limitación distribuida del proveedor de hosting.
+El indicador de configuración solo confirma la presencia de una clave, no su validez o cuota. El servidor valida JSON y firma de imagen y envía la foto al proveedor. Zod comprueba el resultado. Timeout del proveedor: 55 segundos; cliente: 65 segundos. Los errores de cuota, autenticación, disponibilidad, formato y tiempo de espera se muestran expresamente.
 
 No se afirma una prueba real de proveedores en esta entrega. La precisión agronómica no está validada. Una foto no confirma una enfermedad; la confianza es una autoestimación no calibrada. El diámetro estimado se descarta si no se declara una escala, y el modelo debe comprobar que sea visible.
 
 ## Cuenta opcional en Supabase
 
-1. Crear un proyecto propio y ejecutar `supabase/personal-account.sql` en su editor SQL. Si ya existen tablas/políticas, revisar su compatibilidad y cualquier política permisiva anterior antes de usarlo.
-2. Completar estas variables **públicas** de `.env.local` antes de compilar:
+1. Para un proyecto Supabase nuevo, ejecutar `supabase/personal-account.sql`. Para una base existente, revisar y ejecutar `supabase/actualizar_base_existente.sql` solo si corresponde a su esquema.
+2. Para habilitar la comparativa del equipo, ejecutar `supabase/comparativa-equipo.sql` después de confirmar que existen `agrovision_records` y `agrovision_members`. Luego abrir `supabase/activar-admin-comparativa.sql`, reemplazar `PON_AQUI_TU_CORREO` por el correo de la cuenta administradora y ejecutar ese bloque. No se debe compartir el correo ni el UUID en el repositorio.
+3. Completar estas variables **públicas** de `.env.local` antes de compilar:
 
 ```dotenv
 NEXT_PUBLIC_SUPABASE_URL=https://TU-PROYECTO.supabase.co
@@ -49,11 +47,11 @@ NEXT_PUBLIC_AGROVISION_PROJECT_ID=rabanitos-2026
 
 3. Reiniciar desarrollo o recompilar producción. Crear cuenta, confirmar correo si Supabase lo exige e iniciar sesión. Configurar en Supabase el origen permitido y los redirects de recuperación. No usar la clave `service_role` en el navegador.
 
-Hay registro, login, cierre de sesión y recuperación de contraseña mediante Supabase Auth. Cada cuenta tiene sus propios registros, no una bitácora de equipo compartida. Las fotos se guardan en un bucket privado y se leen con URLs temporales de una hora. El cliente consulta cambios cada 12 segundos mientras la pestaña está visible. Las variables `NEXT_PUBLIC_` quedan fijadas al compilar.
+Hay registro, login, cierre de sesión y recuperación de contraseña mediante Supabase Auth. Cada cuenta conserva sus registros privados; el panel de equipo no comparte bitácoras ni fotografías individuales. El administrador autorizado puede consultar una vista previa agregada y publicar una instantánea con promedios por tratamiento. Los integrantes registrados en el proyecto solo pueden consultar la última publicación; no pueden generar ni publicar la vista previa. Las fotos se guardan en un bucket privado y se leen con URLs temporales de una hora. El cliente consulta cambios cada 12 segundos mientras la pestaña está visible. Las variables `NEXT_PUBLIC_` quedan fijadas al compilar.
 
 La primera cuenta elegible puede migrar las observaciones reales del navegador; se conserva un marcador de propietario para no copiarlas automáticamente a otra cuenta. Una importación manual de respaldo es una acción distinta y explícita.
 
-La API de IA acepta la sesión de Supabase validada en el servidor cuando la nube está configurada. En modo local exige el token compartido seguro descrito arriba. El limitador incluido (10 solicitudes/minuto/usuario autenticado o IP/instancia) no es un control distribuido resistente al abuso.
+La API de IA y la cuenta Supabase tienen controles separados: el login por sí solo no protege `/api/analyze-crop`. Para exponer un servidor con coste, definir el token de análisis y añadir una política de acceso y limitación adecuada al alojamiento. El limitador incluido (10 solicitudes/minuto/cliente/instancia) no es un control distribuido resistente al abuso.
 
 ## Funciones implementadas
 
@@ -64,6 +62,8 @@ La API de IA acepta la sesión de Supabase validada en el servidor cuando la nub
 - Crecimiento, comparación por tratamiento/dosis y edad; promedios y desviación estándar muestral. No se trata como cero una medida faltante y no se equipara una estimación IA con una medida manual.
 - CSV completo con procedencia, diagnóstico y crecimiento; PDF por planta con historial, gráficas manuales y observaciones/recomendaciones/limitaciones de IA. Las fotos no se incrustan: se conservan en el respaldo JSON.
 - Respaldo JSON portable con fotos y restauración por ID sin sobrescribir los existentes. En modo nube se escribe en la nube y se espera su resultado; no se incorpora accidentalmente la bitácora local.
+- Resumen general administrativo con tarjetas de indicadores, gráfico de crecimiento, tabla de tratamientos y promedios de altura, crecimiento, hojas, diámetro y estado sanitario.
+- Publicación explícita de resultados agregados para el equipo; los integrantes ven solo la última instantánea aprobada en una vista de solo lectura.
 - Cuatro protocolos de buenas prácticas, temas claro/oscuro y diseño con reglas adaptables a móvil.
 
 ## Almacenamiento y modo sin conexión
@@ -72,11 +72,9 @@ Sin Supabase: IndexedDB, base `agrovision`, almacén `data`, clave `records`. Ca
 
 En producción el service worker guarda HTML, JS/CSS iniciales y recursos de marca al instalarse. Una primera visita debe terminar la instalación antes de desconectarse. No guarda respuestas de API ni llamadas externas. El modo local permite consultar/registrar sin internet. El PDF necesita haber descargado sus módulos dinámicos previamente. En modo nube no hay cola offline ni réplica local: las operaciones necesitan conexión. Las URLs firmadas de fotos vencen y se renuevan al consultar la nube.
 
-No hay sensores IoT, diagnóstico agronómico confirmado, trabajo colaborativo entre cuentas ni análisis local de imágenes. El entorno no permitió una prueba visual en navegador; consultar `INFORME_AUDITORIA.md` y `VERIFICACION_VERCEL.md` para límites y pendientes.
+No hay sensores IoT, diagnóstico agronómico confirmado ni análisis local de imágenes. La colaboración se limita al resumen agregado publicado por el administrador; no existe una bitácora compartida editable entre cuentas. El entorno no permitió una prueba visual en navegador; consultar `INFORME_AUDITORIA.md` y `VERIFICACION_VERCEL.md` para límites y pendientes.
 
 ## Verificación y producción
-
-Consulta `QA_STATUS.md` para distinguir las comprobaciones realmente ejecutadas de las que aún requieren Node 24 y credenciales/servicios reales.
 
 ```bash
 npm run typecheck
@@ -91,7 +89,7 @@ Se actualizaron Next.js a 16.4.3, React a 19.3.1, Zod a 4.6.7 y jsPDF a 4.2.1 pa
 
 ## Archivos principales
 
-`app/api/analyze-crop/route.ts` adapta la API de Next al motor `lib/analysis-server.ts`. `components/auth-gate.tsx` resuelve cuenta/local y `components/dashboard.tsx` coordina vistas, persistencia y análisis. `report-form`, `history`, `edit-observation`, `comparison` y `plant-growth` implementan los flujos de campo. `lib/storage.ts` maneja IndexedDB, `lib/cloud.ts` Supabase, `lib/backup.ts` validación de respaldos, `lib/tracking.ts` identidad/fechas/crecimiento, `lib/metrics.ts` estadísticas y CSV seguro, `lib/exports.ts` los archivos CSV/PDF. `public/sw.js` implementa la caché offline.
+`app/api/analyze-crop/route.ts` adapta la API de Next al motor `lib/analysis-server.ts`. `components/auth-gate.tsx` resuelve cuenta/local y `components/dashboard.tsx` coordina vistas, persistencia y análisis. `report-form`, `history`, `edit-observation`, `comparison`, `team-comparison` y `published-team-comparison` implementan los flujos de campo y el resumen de equipo. `lib/storage.ts` maneja IndexedDB, `lib/cloud.ts` Supabase, `lib/backup.ts` validación de respaldos, `lib/tracking.ts` identidad/fechas/crecimiento, `lib/metrics.ts` estadísticas y CSV seguro, `lib/exports.ts` los archivos CSV/PDF. `public/sw.js` implementa la caché offline.
 
 ## Referencias
 

@@ -145,10 +145,28 @@ Entrar a http://localhost:3000. Para IA y Supabase seguir README.md; no hay secr
 El ZIP excluye node_modules, .next, dist, copias temporales del adaptador, caches, tsbuildinfo y archivos .env privados. Incluye código, recursos públicos, pruebas, lockfile, guía, ejemplo de variables y script SQL para completar la configuración de nube.
 
 
-## Anexo de seguridad — 10 de noviembre de 2026
+## Complemento de entrega 1.2.0 — panel administrativo y publicación al equipo
 
-Sobre la versión 1.1.2 se reforzó el endpoint de análisis: ahora exige una sesión de Supabase validada por Auth o un token compartido de al menos 32 caracteres. La identidad para el límite de solicitudes procede del ID validado de Supabase o de una dirección de proxy; ya no se usa `X-Client-ID` como identidad de seguridad. La limitación se ejecuta antes de leer el cuerpo y el mapa de contadores tiene una cota de memoria. Se valida la codificación Base64 y la firma binaria JPEG/PNG/WEBP. El Dashboard envía automáticamente el access token de la sesión Supabase.
+Sobre la versión fuente recibida se añadieron estos cambios:
 
-También se añadió renovación de sesión single-flight dentro de una pestaña. Los fallos temporales de red/servidor no borran la sesión guardada y una renovación tardía no puede resucitar una sesión cerrada. Se añadieron pruebas para autenticación Supabase, configuración insegura, fallos de Auth y renovación concurrente.
+- `components/team-comparison.tsx`: tabla visible de resultados por tratamiento, promedios y tamaños de muestra; botón de publicación con confirmación; estado de publicación y última fecha publicada.
+- `components/published-team-comparison.tsx`: vista de solo lectura para integrantes, basada exclusivamente en `agrovision_comparison_published`.
+- `components/dashboard.tsx`: el apartado Resumen general se muestra en modo nube tanto a administradores como a integrantes. La comprobación de rol decide qué componente se renderiza; la autorización de los datos sigue en Supabase.
+- `app/globals.css`: estilos responsive para la tabla y acciones de publicación.
+- `supabase/comparativa-equipo.sql` y `supabase/activar-admin-comparativa.sql`: scripts de instalación/activación incorporados al repositorio para que la configuración no dependa de archivos externos.
+- `README.md` y `LEEME_PRIMERO.txt`: instrucciones de configuración y separación entre vista previa administrativa y publicación para integrantes.
 
-**Estado de validación de este anexo:** revisión sintáctica de los archivos TypeScript/TSX: 31 archivos procesados, cero diagnósticos sintácticos. No se pudo ejecutar `npm ci`, `npm test`, `npm run typecheck` ni `npm run build` en el entorno de preparación porque el entorno dispone de Node 22.16.0 (el proyecto requiere Node 24.x) y no resuelve `registry.npmjs.org`. Por tanto, estos cambios no deben considerarse certificados por build/pruebas hasta ejecutar `npm run verify` en Node 24 con dependencias instalables. La limitación del rate limit por instancia y la necesidad de probar RLS/Storage contra un proyecto Supabase real permanecen.
+### Verificación adicional de esta preparación
+
+- Parser TypeScript: 33 archivos `.ts`/`.tsx`, cero errores sintácticos.
+- `node --check`: correcto en `next.config.mjs`, `scripts/build-site.mjs` y `public/sw.js`.
+- Compilación aislada de `lib/types.ts`, `lib/tracking.ts` y `lib/metrics.ts`: correcta.
+- Prueba aislada de métricas: 20 observaciones sintéticas, 4 plantas y 2 tratamientos; `compare()` devolvió dos tratamientos con dos plantas cada uno. Los promedios de altura, diámetro y hojas coincidieron con los valores calculados manualmente.
+- `npm ci` no terminó en el entorno de preparación porque no se pudo completar la descarga del registro npm. Por ese motivo no se afirma que `npm run verify`, el build de Next ni las pruebas completas se hayan ejecutado en esta sesión.
+- No se accedió a la instancia Supabase del propietario, no se ejecutó SQL, no se publicaron resultados y no se modificaron datos remotos.
+
+### Pendiente externo a este paquete
+
+La entrega incorpora el código de interfaz y los scripts SQL, pero no puede desplegar ni configurar las credenciales por el propietario. Para que la vista de integrantes funcione en producción, el proyecto Supabase debe tener instaladas las cuatro RPC, el usuario administrador debe estar registrado en `agrovision_comparison_admins`, y las cuentas que aportan registros deben pertenecer a `agrovision_members`. La comprobación final debe hacerse con dos cuentas autenticadas reales.
+
+No se debe interpretar una compilación local o una prueba con datos sintéticos como certificación de seguridad, exactitud agronómica o disponibilidad de los proveedores IA.
