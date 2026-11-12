@@ -278,6 +278,100 @@ async function cloudRest<T>(path: string, init: RequestInit = {}): Promise<T> {
   return data as T;
 }
 
+
+/** Aggregated comparison data returned by the Supabase security-definer RPCs. */
+export type ProjectComparisonTreatment = {
+  crop: string;
+  fertilizer: string;
+  dose: string;
+  plantCount: number;
+  memberCount: number;
+  ageMinDays: number | null;
+  ageMaxDays: number | null;
+  height: { n: number; meanCm: number | null };
+  growth: {
+    n: number;
+    meanCmPerDay: number | null;
+    meanPeriodDays: number | null;
+  };
+  leaves: { n: number; meanCount: number | null };
+  diameter: { n: number; meanCm: number | null };
+  health: {
+    assessed: number;
+    healthy: number;
+    healthyPercent: number | null;
+  };
+};
+
+export type ProjectComparisonData = {
+  projectId: string;
+  generatedAt: string;
+  summary: {
+    observations: number;
+    plants: number;
+    members: number;
+    treatments: number;
+  };
+  treatments: ProjectComparisonTreatment[];
+  warnings: string[];
+  methodology: {
+    measurements: string;
+    growth: string;
+    averages: string;
+    privacy: string;
+  };
+};
+
+export type PublishedProjectComparison = {
+  payload: ProjectComparisonData;
+  publishedAt: string;
+};
+
+/** Supabase verifies the administrator against auth.uid(); no client-side role is trusted. */
+export async function isProjectComparisonAdmin(): Promise<boolean> {
+  const result = await cloudRest<boolean>(
+    "rpc/agrovision_comparison_is_admin",
+    {
+      method: "POST",
+      body: JSON.stringify({ p_project_id: PROJECT_ID }),
+    },
+  );
+  return result === true;
+}
+
+/** Administrator-only preview. The RPC returns aggregated metrics, never individual records. */
+export async function readProjectComparisonPreview(): Promise<ProjectComparisonData> {
+  return cloudRest<ProjectComparisonData>(
+    "rpc/agrovision_comparison_preview",
+    {
+      method: "POST",
+      body: JSON.stringify({ p_project_id: PROJECT_ID }),
+    },
+  );
+}
+
+/** Reads only the administrator-approved aggregate snapshot for a project member. */
+export async function readPublishedProjectComparison(): Promise<PublishedProjectComparison | null> {
+  return cloudRest<PublishedProjectComparison | null>(
+    "rpc/agrovision_comparison_published",
+    {
+      method: "POST",
+      body: JSON.stringify({ p_project_id: PROJECT_ID }),
+    },
+  );
+}
+
+/** Recalculates on Supabase and publishes the aggregate snapshot. */
+export async function publishProjectComparison(): Promise<PublishedProjectComparison> {
+  return cloudRest<PublishedProjectComparison>(
+    "rpc/agrovision_comparison_publish",
+    {
+      method: "POST",
+      body: JSON.stringify({ p_project_id: PROJECT_ID }),
+    },
+  );
+}
+
 async function getCloudRows(): Promise<CloudRecordRow[]> {
   const session = await activeSession();
   const query = new URLSearchParams({
