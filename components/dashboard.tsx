@@ -43,6 +43,7 @@ import { summary } from "@/lib/metrics";
 import { exportCsv, exportPdf } from "@/lib/exports";
 import { validateRecord } from "@/lib/tracking";
 import {
+  getCloudSession,
   isCloudConfigured,
   migrateLocalRecordsToCloud,
   mergeBackupIntoCloud,
@@ -53,6 +54,7 @@ import {
 import AnalysisPanel from "./analysis-panel";
 import History from "./history";
 import Comparison from "./comparison";
+import TeamComparison from "./team-comparison";
 import Protocols from "./protocols";
 import ReportForm from "./report-form";
 import EditObservation from "./edit-observation";
@@ -98,32 +100,15 @@ function currentTime() {
   });
 }
 
-function getClientId() {
-  try {
-    const key = "agrovision-client-id";
-    const existing = localStorage.getItem(key);
-
-    if (existing) return existing;
-
-    const created =
-      typeof crypto.randomUUID === "function"
-        ? crypto.randomUUID()
-        : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-
-    localStorage.setItem(key, created);
-    return created;
-  } catch {
-    return "";
-  }
-}
 
 type DashboardProps = {
   userEmail?: string;
   onLogout?: () => void;
+  localMode?: boolean;
 };
 
-export default function Dashboard({ userEmail, onLogout }: DashboardProps) {
-  const cloudMode = isCloudConfigured();
+export default function Dashboard({ userEmail, onLogout, localMode = false }: DashboardProps) {
+  const cloudMode = !localMode && isCloudConfigured();
   const [view, setView] = useState<View>("analysis");
   const [records, setRecords] = useState<FieldRecord[]>([]);
   const [ready, setReady] = useState(false);
@@ -460,7 +445,17 @@ export default function Dashboard({ userEmail, onLogout }: DashboardProps) {
         );
       }
 
-      const clientId = getClientId();
+      let bearerToken = accessToken.trim();
+      if (cloudMode) {
+        const session = await getCloudSession();
+        if (!session) {
+          throw new Error("Tu sesión de Supabase venció. Inicia sesión nuevamente.");
+        }
+        bearerToken = session.access_token;
+      }
+      if (!bearerToken) {
+        throw new Error("El análisis requiere una sesión válida o un código de acceso configurado.");
+      }
 
       const payload = JSON.stringify({ image: dataImage, crop, scaleReference });
       if (new TextEncoder().encode(payload).byteLength > MAX_ANALYSIS_BODY_BYTES) {
@@ -471,10 +466,7 @@ export default function Dashboard({ userEmail, onLogout }: DashboardProps) {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          ...(clientId ? { "X-Client-ID": clientId } : {}),
-          ...(accessToken
-            ? { Authorization: `Bearer ${accessToken}` }
-            : {}),
+          Authorization: `Bearer ${bearerToken}`,
         },
         body: payload,
         signal: controller.signal,
@@ -873,7 +865,7 @@ export default function Dashboard({ userEmail, onLogout }: DashboardProps) {
                 diagnosis={diagnosis}
                 source={source}
                 busy={busy}
-                requiresToken={requiresToken}
+                requiresToken={requiresToken && !cloudMode}
                 mode={mode}
                 setMode={setMode}
                 onFile={upload}
@@ -889,7 +881,9 @@ export default function Dashboard({ userEmail, onLogout }: DashboardProps) {
                 onNew={() => setForm("new")}
               />
             ) : view === "comparison" ? (
-              <Comparison records={records} />
+              cloudMode
+                ? <TeamComparison records={records} />
+                : <Comparison records={records} />
             ) : (
               <Protocols />
             )}

@@ -182,26 +182,75 @@ export async function cloudSignOut() {
   }
 }
 
+let refreshInFlight: Promise<CloudSession | null> | null = null;
+
+async function refreshCloudSession(session: CloudSession): Promise<CloudSession | null> {
+  let response: Response;
+  try {
+    response = await cloudFetch(`${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`, {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({ refresh_token: session.refresh_token }),
+      cache: "no-store",
+    });
+  } catch {
+    // A network outage is not proof that the refresh token is invalid.
+    // Keep the stored session so the user can retry when connectivity returns.
+    throw new Error("No se pudo renovar la sesión por un problema de conexión. Inténtalo nuevamente.");
+  }
+
+  const data = await responseJson(response);
+  if (!response.ok) {
+    const details = data && typeof data === "object" ? data as Record<string, unknown> : {};
+    const errorCode = String(details.error || details.code || details.error_code || "").toLowerCase();
+    const errorMessage = String(details.msg || details.message || details.error_description || "").toLowerCase();
+    const invalidRefresh = response.status === 401 ||
+      (response.status === 400 && /invalid_grant|refresh_token_not_found|refresh_token_already_used|invalid refresh token/.test(`${errorCode} ${errorMessage}`));
+
+    if (invalidRefresh) {
+      const current = readStoredSession();
+      if (current && (current.user.id !== session.user.id || current.refresh_token !== session.refresh_token)) {
+        return current;
+      }
+      if (current) clearSession();
+      return null;
+    }
+
+    throw new Error(
+  `No se pudo renovar la sesión (${response.status}). Inténtalo nuevamente.`);
+  }
+
+  const refreshed = normaliseSession((data || {}) as Record<string, unknown>);
+  if (!refreshed) {
+    throw new Error("Supabase devolvió una sesión de renovación incompleta. No se eliminó la sesión guardada.");
+  }
+
+  // Do not overwrite a newer session or a different account written by another tab.
+  const current = readStoredSession();
+  // A sign-out during refresh must not resurrect the old account session.
+  if (!current) return null;
+  if (current.user.id !== session.user.id || current.refresh_token !== session.refresh_token) {
+    return current;
+  }
+
+  saveSession(refreshed);
+  return refreshed;
+}
+
 export async function getCloudSession(): Promise<CloudSession | null> {
   ensureCloudConfigured();
   const session = readStoredSession();
   if (!session) return null;
   if (session.expires_at > Math.floor(Date.now() / 1000) + 60) return session;
 
-  const response = await cloudFetch(`${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`, {
-    method: "POST",
-    headers: authHeaders(),
-    body: JSON.stringify({ refresh_token: session.refresh_token }),
-    cache: "no-store",
-  });
-  const data = await responseJson(response);
-  const refreshed = response.ok ? normaliseSession((data || {}) as Record<string, unknown>) : null;
-  if (!refreshed) {
-    clearSession();
-    return null;
+  // Multiple requests in the same tab share one refresh request. This prevents
+  // Supabase refresh-token rotation from invalidating concurrent operations.
+  if (!refreshInFlight) {
+    refreshInFlight = refreshCloudSession(session).finally(() => {
+      refreshInFlight = null;
+    });
   }
-  saveSession(refreshed);
-  return refreshed;
+  return refreshInFlight;
 }
 
 function ensureCloudConfigured() {
@@ -227,6 +276,100 @@ async function cloudRest<T>(path: string, init: RequestInit = {}): Promise<T> {
   const data = await responseJson(response);
   if (!response.ok) throw new Error(parseErrorMessage(data, `Error de la base de datos (${response.status}).`));
   return data as T;
+}
+
+
+/** Aggregated comparison data returned by the Supabase security-definer RPCs. */
+export type ProjectComparisonTreatment = {
+  crop: string;
+  fertilizer: string;
+  dose: string;
+  plantCount: number;
+  memberCount: number;
+  ageMinDays: number | null;
+  ageMaxDays: number | null;
+  height: { n: number; meanCm: number | null };
+  growth: {
+    n: number;
+    meanCmPerDay: number | null;
+    meanPeriodDays: number | null;
+  };
+  leaves: { n: number; meanCount: number | null };
+  diameter: { n: number; meanCm: number | null };
+  health: {
+    assessed: number;
+    healthy: number;
+    healthyPercent: number | null;
+  };
+};
+
+export type ProjectComparisonData = {
+  projectId: string;
+  generatedAt: string;
+  summary: {
+    observations: number;
+    plants: number;
+    members: number;
+    treatments: number;
+  };
+  treatments: ProjectComparisonTreatment[];
+  warnings: string[];
+  methodology: {
+    measurements: string;
+    growth: string;
+    averages: string;
+    privacy: string;
+  };
+};
+
+export type PublishedProjectComparison = {
+  payload: ProjectComparisonData;
+  publishedAt: string;
+};
+
+/** Supabase verifies the administrator against auth.uid(); no client-side role is trusted. */
+export async function isProjectComparisonAdmin(): Promise<boolean> {
+  const result = await cloudRest<boolean>(
+    "rpc/agrovision_comparison_is_admin",
+    {
+      method: "POST",
+      body: JSON.stringify({ p_project_id: PROJECT_ID }),
+    },
+  );
+  return result === true;
+}
+
+/** Administrator-only preview. The RPC returns aggregated metrics, never individual records. */
+export async function readProjectComparisonPreview(): Promise<ProjectComparisonData> {
+  return cloudRest<ProjectComparisonData>(
+    "rpc/agrovision_comparison_preview",
+    {
+      method: "POST",
+      body: JSON.stringify({ p_project_id: PROJECT_ID }),
+    },
+  );
+}
+
+/** Reads only the administrator-approved aggregate snapshot for a project member. */
+export async function readPublishedProjectComparison(): Promise<PublishedProjectComparison | null> {
+  return cloudRest<PublishedProjectComparison | null>(
+    "rpc/agrovision_comparison_published",
+    {
+      method: "POST",
+      body: JSON.stringify({ p_project_id: PROJECT_ID }),
+    },
+  );
+}
+
+/** Recalculates on Supabase and publishes the aggregate snapshot. */
+export async function publishProjectComparison(): Promise<PublishedProjectComparison> {
+  return cloudRest<PublishedProjectComparison>(
+    "rpc/agrovision_comparison_publish",
+    {
+      method: "POST",
+      body: JSON.stringify({ p_project_id: PROJECT_ID }),
+    },
+  );
 }
 
 async function getCloudRows(): Promise<CloudRecordRow[]> {

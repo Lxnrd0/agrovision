@@ -471,7 +471,7 @@ export default function TeamComparison({ records }: { records: FieldRecord[] }) 
             <AlertTriangle size={18} /> Consideraciones del análisis
           </h3>
           <ul style={{ margin: "10px 0 0", paddingLeft: 22 }}>
-            {data.warnings.map((warning, index) => <li key={index}>{warning}</li>)}
+            {data.warnings.map((warning: string, index: number) => <li key={index}>{warning}</li>)}
           </ul>
         </div>
       )}
