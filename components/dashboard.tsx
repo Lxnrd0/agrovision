@@ -618,7 +618,7 @@ export default function Dashboard({ userEmail, onLogout, localMode = false }: Da
           </span>
           <div>
             <strong>Mi monitoreo</strong>
-            <small>Monitoreo de rabanito</small>
+            <small>TerraNova – Monitoreo inteligente de cultivos</small>
           </div>
         </div>
 
@@ -728,7 +728,7 @@ export default function Dashboard({ userEmail, onLogout, localMode = false }: Da
                     {" "}REGISTRO Y MONITOREO INTELIGENTE DE CULTIVOS
                   </div>
                   <h1>
-                    Monitoreo de rabanito<span>.</span>
+                    TerraNova <span>–</span> Monitoreo inteligente de cultivos
                   </h1>
                   <p>
                     Registra y consulta las observaciones de tu planta.
