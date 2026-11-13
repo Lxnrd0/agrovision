@@ -27,6 +27,8 @@ const PROJECT_ID = process.env.NEXT_PUBLIC_AGROVISION_PROJECT_ID || "rabanitos-2
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/$/, "") || "";
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
 const PRIVATE_IMAGE_PREFIX = "supabase-storage://agrovision-photos/";
+const SIGNED_URL_CACHE_TTL_MS = 50 * 60 * 1000;
+const signedImageCache = new Map<string, { url: string; expiresAt: number }>();
 
 async function cloudFetch(input: RequestInfo | URL, init: RequestInit = {}) {
   if (init.signal) return fetch(input, init);
@@ -85,11 +87,18 @@ async function responseJson(response: Response) {
 }
 
 function saveSession(session: CloudSession) {
+  try {
+    const previous = JSON.parse(localStorage.getItem(SESSION_KEY) || "null") as { user?: { id?: string } } | null;
+    if (previous?.user?.id && previous.user.id !== session.user.id) signedImageCache.clear();
+  } catch {
+    signedImageCache.clear();
+  }
   localStorage.setItem(SESSION_KEY, JSON.stringify(session));
 }
 
 function clearSession() {
   localStorage.removeItem(SESSION_KEY);
+  signedImageCache.clear();
 }
 
 function readStoredSession(): CloudSession | null {
@@ -416,8 +425,13 @@ function encodePath(path: string) {
   return path.split("/").map(encodeURIComponent).join("/");
 }
 
-async function signedImageUrl(marker: string, accessToken: string): Promise<string> {
+async function signedImageUrl(marker: string, accessToken: string, userId: string): Promise<string> {
   const path = marker.slice(PRIVATE_IMAGE_PREFIX.length);
+  const cacheKey = `${userId}:${path}`;
+  const cached = signedImageCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return cached.url;
+  if (cached) signedImageCache.delete(cacheKey);
+
   const response = await cloudFetch(`${SUPABASE_URL}/storage/v1/object/sign/agrovision-photos/${encodePath(path)}`, {
     method: "POST",
     headers: {
@@ -432,14 +446,36 @@ async function signedImageUrl(marker: string, accessToken: string): Promise<stri
   if (!response.ok || !data?.signedURL) {
     throw new Error(parseErrorMessage(data, "No se pudo obtener acceso a una fotografía de tu bitácora."));
   }
-  if (/^https?:\/\//i.test(data.signedURL)) return data.signedURL;
-  if (data.signedURL.startsWith("/storage/v1/")) return `${SUPABASE_URL}${data.signedURL}`;
-  return `${SUPABASE_URL}/storage/v1${data.signedURL.startsWith("/") ? data.signedURL : `/${data.signedURL}`}`;
+  const url = /^https?:\/\//i.test(data.signedURL)
+    ? data.signedURL
+    : data.signedURL.startsWith("/storage/v1/")
+      ? `${SUPABASE_URL}${data.signedURL}`
+      : `${SUPABASE_URL}/storage/v1${data.signedURL.startsWith("/") ? data.signedURL : `/${data.signedURL}`}`;
+  if (signedImageCache.size >= 2_000) {
+    const oldest = signedImageCache.keys().next().value;
+    if (oldest) signedImageCache.delete(oldest);
+  }
+  signedImageCache.set(cacheKey, { url, expiresAt: Date.now() + SIGNED_URL_CACHE_TTL_MS });
+  return url;
 }
 
-async function withSignedImage(record: FieldRecord, accessToken: string): Promise<FieldRecord> {
+async function withSignedImage(record: FieldRecord, accessToken: string, userId: string): Promise<FieldRecord> {
   if (!record.image?.startsWith(PRIVATE_IMAGE_PREFIX)) return record;
-  return { ...record, image: await signedImageUrl(record.image, accessToken) };
+  return { ...record, image: await signedImageUrl(record.image, accessToken, userId) };
+}
+
+async function mapWithConcurrency<T, R>(items: T[], concurrency: number, mapper: (item: T) => Promise<R>): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let nextIndex = 0;
+  const workers = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+    while (true) {
+      const index = nextIndex++;
+      if (index >= items.length) return;
+      results[index] = await mapper(items[index]);
+    }
+  });
+  await Promise.all(workers);
+  return results;
 }
 
 export async function readCloudRecords(): Promise<FieldRecord[]> {
@@ -451,7 +487,11 @@ export async function readCloudRecords(): Promise<FieldRecord[]> {
       throw new Error("La nube contiene un registro inválido. No se modificaron tus datos.");
     }
   }
-  return sorted(await Promise.all(records.map((record) => withSignedImage(record, session.access_token))));
+  return sorted(await mapWithConcurrency(
+    records,
+    8,
+    (record) => withSignedImage(record, session.access_token, session.user.id),
+  ));
 }
 
 async function uploadImageIfNeeded(record: FieldRecord): Promise<FieldRecord> {
@@ -526,50 +566,40 @@ export async function mutateCloudRecords(update: (records: FieldRecord[]) => Fie
     return !old || stableStringify(old.payload) !== stableStringify(record);
   });
 
-  if (changed.length) {
-    const payload = changed.map((record) => {
-      const old = previousById.get(record.id);
-      return {
-        id: record.id,
-        owner_id: session.user.id,
-        project_id: PROJECT_ID,
-        payload: record,
-        created_by: old?.created_by || session.user.id,
-        updated_by: session.user.id,
-      };
-    });
-    for (const item of payload) {
-      const old = previousById.get(item.id);
-      if (!old) {
-        // A conflicting ID must not silently overwrite an existing observation.
-        await cloudRest<unknown>("agrovision_records", {
-          method: "POST",
-          body: JSON.stringify(item),
-        });
-      } else {
-        if (!old.updated_at) throw new Error("Actualiza el esquema de Supabase antes de editar.");
-        const query = new URLSearchParams({
-          id: `eq.${item.id}`, owner_id: `eq.${session.user.id}`,
-          project_id: `eq.${PROJECT_ID}`, updated_at: `eq.${old.updated_at}`,
-        });
-        const updated = await cloudRest<CloudRecordRow[]>(`agrovision_records?${query}`, {
-          method: "PATCH", headers: { Prefer: "return=representation" },
-          body: JSON.stringify(item),
-        });
-        if (!updated.length) throw new Error("Otra sesión modificó esta observación. Recarga antes de reintentar.");
-      }
-    }
+  if (changed.some((record) => previousById.has(record.id) && !previousById.get(record.id)?.updated_at)) {
+    throw new Error("Actualiza el esquema de Supabase antes de editar observaciones.");
   }
+  const upserts = changed.map((record) => {
+    const old = previousById.get(record.id);
+    return {
+      id: record.id,
+      payload: record,
+      expected_updated_at: old?.updated_at || null,
+    };
+  });
+  const deletes = rows
+    .filter((row) => !nextById.has(row.id))
+    .map((row) => ({ id: row.id, expected_updated_at: row.updated_at }));
 
-  for (const row of rows) {
-    if (!nextById.has(row.id)) {
-      if (!row.updated_at) throw new Error("Actualiza el esquema de Supabase antes de eliminar.");
-      const query = new URLSearchParams({ id: `eq.${row.id}`, owner_id: `eq.${session.user.id}`,
-        project_id: `eq.${PROJECT_ID}`, updated_at: `eq.${row.updated_at}` });
-      const deleted = await cloudRest<CloudRecordRow[]>(`agrovision_records?${query}`, {
-        method: "DELETE", headers: { Prefer: "return=representation" },
+  if (upserts.length || deletes.length) {
+    if (deletes.some((row) => !row.expected_updated_at)) {
+      throw new Error("Actualiza el esquema de Supabase antes de eliminar observaciones.");
+    }
+    try {
+      await cloudRest<unknown>("rpc/agrovision_records_apply_batch", {
+        method: "POST",
+        body: JSON.stringify({
+          p_project_id: PROJECT_ID,
+          p_upserts: upserts,
+          p_deletes: deletes,
+        }),
       });
-      if (!deleted.length) throw new Error("Otra sesión modificó esta observación. Recarga antes de eliminar.");
+    } catch (reason) {
+      const message = reason instanceof Error ? reason.message : "";
+      if (/concurrencia|versión esperada|cambió|ya existe|ya fue eliminada/i.test(message)) {
+        throw new Error("Otra sesión modificó esta observación. Recarga la bitácora antes de reintentar.");
+      }
+      throw reason;
     }
   }
   return readCloudRecords();

@@ -1,4 +1,4 @@
-AGROVISION / TERRANOVA — ENTREGA FINAL
+AGROVISION / TERRANOVA — VERSION 1.2.1
 
 1. Instala Node.js 24.x.
 2. Abre esta carpeta en VS Code y su terminal.
@@ -7,16 +7,30 @@ AGROVISION / TERRANOVA — ENTREGA FINAL
 5. Si todo termina correctamente, ejecuta: npm run dev
 6. Abre http://localhost:3000
 
-Sin Supabase, pulsa «Continuar solo en este dispositivo».
-Para IA real o cuenta en la nube, configura .env.local siguiendo README.md y .env.example.
+MODO LOCAL E IA
+- Sin Supabase, pulsa «Continuar solo en este dispositivo».
+- Para análisis IA en modo local, configura ANALYSIS_ACCESS_TOKEN con un secreto aleatorio de al menos 32 caracteres.
+- Para modo nube, configura NEXT_PUBLIC_SUPABASE_URL y NEXT_PUBLIC_SUPABASE_ANON_KEY.
+- No subas .env.local ni claves privadas al repositorio.
 
-CONFIGURACIÓN DE LA COMPARATIVA DE EQUIPO
-- Confirma que Supabase ya tiene agrovision_records y agrovision_members.
-- Ejecuta supabase/comparativa-equipo.sql si las funciones/tablas de comparativa aún no están instaladas.
-- En supabase/activar-admin-comparativa.sql reemplaza PON_AQUI_TU_CORREO por el correo de la cuenta administradora y ejecuta el bloque.
-- Nunca subas .env.local ni claves privadas al repositorio.
-- El administrador ve la vista previa, la tabla de promedios y puede publicar el resumen agregado.
-- Los integrantes ven solo la última publicación; no pueden publicar ni consultar informes individuales de otros.
+CONFIGURACION DE SUPABASE Y COMPARATIVA
+1. Revisa README.md y docs/GUIA_MIGRACION_SUPABASE_1.2.1.md.
+2. Haz un respaldo de base de datos y Storage antes de migrar.
+3. Ejecuta personal-account.sql (instalación nueva) o revisa actualizar_base_existente.sql (base existente).
+4. Ejecuta hardening-1.2.1.sql en una instancia de pruebas.
+5. Ejecuta comparativa-equipo.sql.
+6. Completa activar-admin-comparativa.sql con el correo de la cuenta administradora.
+7. Completa registrar-integrante.sql para cada cuenta autorizada.
 
-Lee ENTREGA_FINAL.md e INFORME_AUDITORIA.md para el alcance y los límites verificados.
+La membresía ahora es explícita: conocer el identificador del proyecto no basta para acceder. No elimines membresías ni registros sin revisar primero a qué cuenta y proyecto pertenecen.
+
+LEE
+- README.md: instalación y configuración.
+- ENTREGA_FINAL.md: resumen de cambios.
+- QA_FINAL.md y QA_STATUS.md: pruebas realizadas y pendientes.
+- docs/OBJETIVO_Y_OBSERVACIONES_1.2.1.md: objetivo y observaciones técnicas.
+- docs/GUIA_MIGRACION_SUPABASE_1.2.1.md: migración segura.
+- docs/PLAN_LIBERACION_1.2.1.md: despliegue y reversión.
+
+No integres a main ni despliegues en producción hasta que npm run verify pase con Node 24 y las migraciones hayan sido probadas con dos cuentas en Supabase de pruebas.
 No borres los datos del navegador sin descargar primero un respaldo JSON.

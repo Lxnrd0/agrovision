@@ -224,7 +224,7 @@ export default function AnalysisPanel({
 
         {mode === "real" && requiresToken && (
           <label className="scale-input">
-            Código de acceso al análisis
+            Código de acceso local (mínimo 32 caracteres)
             <input
               type="password"
               autoComplete="off"
@@ -233,7 +233,7 @@ export default function AnalysisPanel({
               onChange={(event) =>
                 setAccessToken(event.target.value)
               }
-              placeholder="Código configurado por el responsable del sitio"
+              placeholder="Introduce el código local configurado en el servidor"
             />
           </label>
         )}

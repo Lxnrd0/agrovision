@@ -2,6 +2,63 @@
 -- Ejecutar una sola vez desde Supabase > SQL Editor.
 -- No concede acceso a los registros ni a las fotografías privadas.
 
+begin;
+
+-- Membresías aisladas por proyecto. Se crea aquí también para que este
+-- script sea ejecutable después de personal-account.sql o en instalaciones existentes.
+create table if not exists public.agrovision_members (
+  project_id text not null,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  member_name text not null default 'Integrante',
+  joined_at timestamptz not null default now()
+);
+alter table public.agrovision_members enable row level security;
+revoke all on table public.agrovision_members from anon, authenticated;
+
+create or replace function public.agrovision_is_project_member(p_project_id text)
+returns boolean
+language sql
+stable
+security definer
+set search_path = pg_catalog, public
+as $$
+  select auth.uid() is not null and exists (
+    select 1 from public.agrovision_members m
+    where m.project_id = p_project_id and m.user_id = auth.uid()
+  );
+$$;
+revoke all on function public.agrovision_is_project_member(text) from public, anon;
+grant execute on function public.agrovision_is_project_member(text) to authenticated;
+
+alter table public.agrovision_records enable row level security;
+drop policy if exists agrovision_personal_records on public.agrovision_records;
+create policy agrovision_personal_records on public.agrovision_records
+for all to authenticated
+using (owner_id = (select auth.uid()) and public.agrovision_is_project_member(project_id))
+with check (
+  owner_id = (select auth.uid())
+  and public.agrovision_is_project_member(project_id)
+  and created_by = (select auth.uid())
+  and updated_by = (select auth.uid())
+);
+grant select, insert, update, delete on public.agrovision_records to authenticated;
+revoke all on public.agrovision_records from anon;
+
+do $$
+declare extra_policies text;
+begin
+  select string_agg(policyname, ', ' order by policyname)
+    into extra_policies
+  from pg_policies
+  where schemaname = 'public'
+    and tablename = 'agrovision_records'
+    and policyname <> 'agrovision_personal_records';
+  if extra_policies is not null then
+    raise exception 'Hay políticas RLS adicionales en agrovision_records (%). Revísalas: PostgreSQL combina políticas permisivas con OR.', extra_policies;
+  end if;
+end;
+$$;
+
 create table if not exists public.agrovision_comparison_admins (
   project_id text not null,
   user_id uuid not null references auth.users(id) on delete cascade,
@@ -25,41 +82,28 @@ revoke all on table public.agrovision_comparison_publications from anon, authent
 create index if not exists agrovision_records_project_comparison_idx
   on public.agrovision_records (project_id, updated_at desc);
 
-create index if not exists agrovision_members_project_user_idx
-  on public.agrovision_members (project_id, user_id);
-
--- Cada cuenta que guarda su primera observación queda inscrita en el proyecto.
--- La función usa privilegios del propietario para respetar el RLS de la tabla.
-create or replace function public.agrovision_comparison_register_member()
-returns trigger
-language plpgsql
-security definer
-set search_path = pg_catalog, public
-as $$
+-- Detecta duplicados antiguos sin eliminarlos silenciosamente.
+do $$
 begin
-  if not exists (
-    select 1
-    from public.agrovision_members m
-    where m.user_id = new.owner_id
+  if exists (
+    select 1 from public.agrovision_members
+    group by project_id, user_id having count(*) > 1
   ) then
-    insert into public.agrovision_members (user_id, project_id, member_name, joined_at)
-    values (
-      new.owner_id,
-      new.project_id,
-      coalesce(nullif(btrim(new.payload ->> 'collaborator'), ''), 'Integrante'),
-      now()
-    );
+    raise exception 'Hay membresías duplicadas por proyecto y usuario. Revísalas antes de crear la restricción única.';
   end if;
-  return new;
+  if exists (select 1 from public.agrovision_members where project_id is null or user_id is null) then
+    raise exception 'Hay membresías sin project_id o user_id. Revísalas antes de crear la restricción única.';
+  end if;
 end;
 $$;
+alter table public.agrovision_members alter column project_id set not null;
+alter table public.agrovision_members alter column user_id set not null;
+create unique index if not exists agrovision_members_project_user_uidx
+  on public.agrovision_members (project_id, user_id);
 
-revoke all on function public.agrovision_comparison_register_member() from public, anon, authenticated;
-
+-- La pertenencia al proyecto es explícita. No se incorpora a nadie por conocer project_id.
 drop trigger if exists agrovision_comparison_register_member on public.agrovision_records;
-create trigger agrovision_comparison_register_member
-  after insert on public.agrovision_records
-  for each row execute function public.agrovision_comparison_register_member();
+drop function if exists public.agrovision_comparison_register_member();
 
 -- Convierte fechas de JSON sin interrumpir el informe si un registro antiguo
 -- contiene una fecha inválida.
@@ -120,38 +164,7 @@ begin
     raise exception 'Solo el administrador puede generar la vista previa.' using errcode = '42501';
   end if;
 
-  -- Registra como integrantes a las cuentas que ya aportaron observaciones.
-  -- Solo se guarda su pertenencia; nunca se publican sus nombres ni sus informes.
-  with owners as (
-    select distinct on (r.owner_id)
-      r.owner_id,
-      r.project_id,
-      coalesce(nullif(btrim(r.payload ->> 'collaborator'), ''), 'Integrante') as member_name
-    from public.agrovision_records r
-    where r.project_id = p_project_id
-    order by r.owner_id, r.updated_at desc
-  )
-  insert into public.agrovision_members (user_id, project_id, member_name, joined_at)
-  select o.owner_id, o.project_id, o.member_name, now()
-  from owners o
-  where not exists (
-    select 1
-    from public.agrovision_members m
-    where m.user_id = o.owner_id
-  );
-
-  -- El administrador también puede consultar la publicación aunque aún no
-  -- haya creado una observación.
-  insert into public.agrovision_members (user_id, project_id, member_name, joined_at)
-  select a.user_id, a.project_id, 'Administrador', now()
-  from public.agrovision_comparison_admins a
-  where a.project_id = p_project_id
-    and not exists (
-      select 1
-      from public.agrovision_members m
-      where m.user_id = a.user_id
-    );
-
+  -- Solo se consideran observaciones de cuentas inscritas explícitamente.
   with base as (
     select
       r.owner_id,
@@ -204,6 +217,10 @@ begin
         public.agrovision_comparison_try_date(src.p ->> 'date') as observation_date
     ) dt
     where r.project_id = p_project_id
+      and exists (
+        select 1 from public.agrovision_members m
+        where m.project_id = r.project_id and m.user_id = r.owner_id
+      )
       and jsonb_typeof(r.payload) = 'object'
       and coalesce(src.p ->> 'source', 'manual') <> 'demo'
       and nullif(btrim(src.p ->> 'crop'), '') is not null
@@ -228,7 +245,7 @@ begin
   ),
   height_first as (
     select distinct on (b.plant_key)
-      b.plant_key, b.height_cm, b.observation_date
+      b.plant_key, b.treatment_key, b.height_cm, b.observation_date
     from base b
     where b.height_cm is not null
     order by b.plant_key, b.observation_date asc, b.created_at asc, b.record_id asc
@@ -241,19 +258,21 @@ begin
         / nullif((last_measure.observation_date - first_measure.observation_date)::numeric, 0) as cm_per_day,
       (last_measure.observation_date - first_measure.observation_date)::integer as days_between_measurements
     from height_latest last_measure
-    join height_first first_measure using (plant_key)
+    join height_first first_measure
+      on first_measure.plant_key = last_measure.plant_key
+     and first_measure.treatment_key = last_measure.treatment_key
     where last_measure.observation_date > first_measure.observation_date
   ),
   leaf_latest as (
     select distinct on (b.plant_key)
-      b.plant_key, b.leaf_count
+      b.plant_key, b.treatment_key, b.leaf_count
     from base b
     where b.leaf_count is not null
     order by b.plant_key, b.observation_date desc, b.created_at desc, b.record_id desc
   ),
   diameter_latest as (
     select distinct on (b.plant_key)
-      b.plant_key, b.diameter_cm
+      b.plant_key, b.treatment_key, b.diameter_cm
     from base b
     where b.diameter_cm is not null
     order by b.plant_key, b.observation_date desc, b.created_at desc, b.record_id desc
@@ -285,17 +304,17 @@ begin
         1
       ) as healthy_percent
     from plant_latest p
-    left join height_latest h on h.plant_key = p.plant_key
-    left join height_growth g on g.plant_key = p.plant_key
-    left join leaf_latest l on l.plant_key = p.plant_key
-    left join diameter_latest d on d.plant_key = p.plant_key
+    left join height_latest h on h.plant_key = p.plant_key and h.treatment_key = p.treatment_key
+    left join height_growth g on g.plant_key = p.plant_key and g.treatment_key = p.treatment_key
+    left join leaf_latest l on l.plant_key = p.plant_key and l.treatment_key = p.treatment_key
+    left join diameter_latest d on d.plant_key = p.plant_key and d.treatment_key = p.treatment_key
     group by p.treatment_key
   ),
   totals as (
     select
       count(*)::integer as observations,
       count(distinct plant_key)::integer as plants,
-      count(distinct owner_id)::integer as members,
+      (select count(*)::integer from public.agrovision_members m where m.project_id = p_project_id) as members,
       count(distinct treatment_key)::integer as treatments
     from base
   ),
@@ -460,3 +479,6 @@ comment on table public.agrovision_comparison_admins is
   'Administradores autorizados a generar y publicar comparativas agregadas por proyecto.';
 comment on table public.agrovision_comparison_publications is
   'Instantánea publicada de métricas agregadas; no contiene observaciones ni fotografías individuales.';
+
+commit;
+notify pgrst, 'reload schema';

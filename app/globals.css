@@ -3311,3 +3311,25 @@ textarea {
   .tn-treatment-table-card { padding:14px; border-radius:15px; }
   .tn-treatment-table { min-width:880px; }
 }
+
+/* TerraNova 1.2.1 · Bitácora consistente entre laptop y móvil.
+   En móvil cambia la cuadrícula, no la jerarquía visual de cada tarjeta. */
+@media (max-width: 760px) {
+  .record-grid { grid-template-columns: 1fr; gap: 16px; }
+  .record-image { height: 175px; }
+  .record-body { padding: 17px; }
+  .record-body h3 { font-size: 19px; line-height: 1.35; }
+  .record-body > p { font-size: 12px; }
+  .record-meta,
+  .record-foot > span:nth-child(2) { font-size: 10px; }
+  .record-foot .icon-button { width: 34px; height: 34px; }
+}
+@media (max-width: 420px) {
+  .record-meta { gap: 8px; flex-wrap: wrap; }
+  .record-image { height: 175px; }
+  .record-body { padding: 15px; }
+  .record-body h3 { font-size: 19px; }
+}
+.record-body > .record-crop { margin: 3px 0 4px; }
+.record-body > .record-treatment { margin: 0 0 4px; color: var(--green-text); }
+.record-body > .record-age { margin: 0 0 10px; color: var(--dim); }

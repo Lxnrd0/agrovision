@@ -2,11 +2,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { analyze, status } from "../lib/analysis-server";
+import { analyze as analyzeCore, status } from "../lib/analysis-server";
 import { demoDiagnosis } from "../lib/demo";
 
 const DEFAULT_GEMINI_MODEL = "gemini-3.8-flash";
+const TEST_LOCAL_TOKEN = "test-local-analysis-token-32-characters-minimum";
 
+let requestCounter = 0;
 const request = (
   body: unknown,
   extra: Record<string, string> = {},
@@ -15,10 +17,24 @@ const request = (
     method: "POST",
     headers: {
       "Content-Type": "application/json",
+      Authorization: `Bearer ${TEST_LOCAL_TOKEN}`,
+      "x-real-ip": `192.0.2.${(requestCounter++ % 240) + 1}`,
       ...extra,
     },
     body: JSON.stringify(body),
   });
+
+// Test helper: all ordinary analysis calls use the local access-code mode.
+// Tests for missing/invalid credentials override Authorization explicitly.
+async function analyze(requestValue: Request, env: Parameters<typeof analyzeCore>[1] = {}) {
+  const testEnv = {
+    ...env,
+    ...(!env.SUPABASE_URL && !env.SUPABASE_ANON_KEY && !env.ANALYSIS_ACCESS_TOKEN
+      ? { ANALYSIS_ACCESS_TOKEN: TEST_LOCAL_TOKEN }
+      : {}),
+  };
+  return analyzeCore(requestValue, testEnv);
+}
 
 const image =
   "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEAYABgAAD/2Q==";
@@ -26,7 +42,7 @@ const image =
 test("status exposes configuration without revealing secrets", async () => {
   const result = await status({
     OPENAI_API_KEY: "secret",
-    ANALYSIS_ACCESS_TOKEN: "private",
+    ANALYSIS_ACCESS_TOKEN: TEST_LOCAL_TOKEN,
   }).json();
 
   assert.equal(result.configured, true);
@@ -53,14 +69,68 @@ test("rejects cross-origin requests and invalid access tokens", async () => {
   assert.equal(crossOrigin.status, 403);
 
   const unauthorized = await analyze(
-    request({ image }),
+    request({ image }, { authorization: "Bearer wrong-token" }),
     {
       OPENAI_API_KEY: "test",
-      ANALYSIS_ACCESS_TOKEN: "required",
+      ANALYSIS_ACCESS_TOKEN: TEST_LOCAL_TOKEN,
     },
   );
 
   assert.equal(unauthorized.status, 401);
+});
+
+test("rejects analysis when neither Supabase nor a local access token is configured", async () => {
+  const response = await analyzeCore(request({ image }), { OPENAI_API_KEY: "test" });
+  assert.equal(response.status, 503);
+  assert.equal((await response.json()).code, "AUTH_NOT_CONFIGURED");
+});
+
+test("requires a sufficiently long local analysis token", async () => {
+  const response = await analyzeCore(
+    request({ image }, { authorization: "Bearer short" }),
+    { OPENAI_API_KEY: "test", ANALYSIS_ACCESS_TOKEN: "short" },
+  );
+  assert.equal(response.status, 503);
+  assert.equal((await response.json()).code, "AUTH_NOT_CONFIGURED");
+});
+
+test("validates cloud JWT against Supabase Auth before calling the AI provider", async () => {
+  const original = globalThis.fetch;
+  const calls: string[] = [];
+  globalThis.fetch = async (url, options) => {
+    calls.push(String(url));
+    if (String(url).endsWith("/auth/v1/user")) {
+      assert.equal(new Headers(options?.headers).get("Authorization"), "Bearer cloud-jwt");
+      return Response.json({ id: "user-123" });
+    }
+    return Response.json({ choices: [{ finish_reason: "stop", message: { content: JSON.stringify(demoDiagnosis) } }] });
+  };
+  try {
+    const response = await analyzeCore(
+      request({ image }, { authorization: "Bearer cloud-jwt" }),
+      { OPENAI_API_KEY: "test", SUPABASE_URL: "https://test.supabase.co", SUPABASE_ANON_KEY: "anon-test" },
+    );
+    assert.equal(response.status, 200);
+    assert.ok(calls.some((url) => url.endsWith("/auth/v1/user")));
+  } finally { globalThis.fetch = original; }
+});
+
+test("rejects invalid Supabase JWT without calling the AI provider", async () => {
+  const original = globalThis.fetch;
+  let providerCalled = false;
+  globalThis.fetch = async (url) => {
+    if (String(url).endsWith("/auth/v1/user")) return Response.json({ message: "invalid token" }, { status: 401 });
+    providerCalled = true;
+    return Response.json({});
+  };
+  try {
+    const response = await analyzeCore(
+      request({ image }, { authorization: "Bearer invalid-cloud-jwt" }),
+      { OPENAI_API_KEY: "test", SUPABASE_URL: "https://test.supabase.co", SUPABASE_ANON_KEY: "anon-test" },
+    );
+    assert.equal(response.status, 401);
+    assert.equal(providerCalled, false);
+  } finally { globalThis.fetch = original; }
 });
 
 test("rejects invalid image signatures before calling the provider", async () => {
@@ -394,7 +464,7 @@ test("provider timeout is explicit and never returns a demo diagnosis", async ()
   const original = globalThis.fetch;
   globalThis.fetch = async () => { throw new DOMException("timeout", "TimeoutError"); };
   try {
-    const response = await analyze(request({ image }, { "x-client-id": "timeout-test" }), { OPENAI_API_KEY: "test" });
+    const response = await analyze(request({ image }, { "x-real-ip": "192.0.2.250" }), { OPENAI_API_KEY: "test" });
     assert.equal(response.status, 504);
     const body = await response.json();
     assert.equal(body.code, "ANALYSIS_TIMEOUT");
@@ -407,10 +477,10 @@ test("rate limiter rejects the eleventh request and advertises retry time", asyn
   globalThis.fetch = async () => Response.json({ error: { message: "busy" } }, { status: 503 });
   try {
     for (let i = 0; i < 10; i++) {
-      const result = await analyze(request({ image }, { "x-client-id": "rate-test" }), { OPENAI_API_KEY: "test" });
+      const result = await analyze(request({ image }, { "x-real-ip": "192.0.2.249" }), { OPENAI_API_KEY: "test" });
       assert.equal(result.status, 503);
     }
-    const response = await analyze(request({ image }, { "x-client-id": "rate-test" }), { OPENAI_API_KEY: "test" });
+    const response = await analyze(request({ image }, { "x-real-ip": "192.0.2.249" }), { OPENAI_API_KEY: "test" });
     assert.equal(response.status, 429);
     assert.ok(Number(response.headers.get("Retry-After")) > 0);
   } finally { globalThis.fetch = original; }

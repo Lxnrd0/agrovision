@@ -33,8 +33,13 @@ test("cloud restore writes only cloud, awaits completion, and excludes local rec
   let rows: ReturnType<typeof row>[] = [];
   globalThis.fetch = async (_input, init) => {
     assert.ok(init?.signal, "cloud calls have a timeout");
-    if (init?.method === "POST") rows.push(row(JSON.parse(String(init.body)) .payload));
-    return Response.json(init?.method === "POST" ? null : rows.slice(Number(new URL(String(_input)).searchParams.get("offset"))));
+    const url = new URL(String(_input));
+    if (url.pathname.endsWith("/rpc/agrovision_records_apply_batch") && init?.method === "POST") {
+      const batch = JSON.parse(String(init.body));
+      for (const item of batch.p_upserts) rows.push(row(item.payload));
+      return Response.json({ upserted: batch.p_upserts.length, deleted: batch.p_deletes.length });
+    }
+    return Response.json(rows.slice(Number(url.searchParams.get("offset"))));
   };
   const result = await cloud.mergeBackupIntoCloud([fixture]);
   assert.equal(result.added, 1);
@@ -58,11 +63,11 @@ test("cloud reads paginate beyond the default row limit", async () => {
 });
 test("cloud edit detects concurrent changes using conditional timestamp", async () => {
   globalThis.fetch = async (input, init) => {
-    if (init?.method === "PATCH") {
-      assert.equal(new URL(String(input)).searchParams.get("updated_at"), "eq.2026-10-10T12:00:00Z");
-      return Response.json([]); // Another device has already changed it.
+    const url = new URL(String(input));
+    if (url.pathname.endsWith("/rpc/agrovision_records_apply_batch") && init?.method === "POST") {
+      return Response.json({ message: "Conflicto de concurrencia: una observación cambió." }, { status: 400 });
     }
-    return Response.json(Number(new URL(String(input)).searchParams.get("offset")) ? [] : [row(fixture)]);
+    return Response.json(Number(url.searchParams.get("offset")) ? [] : [row(fixture)]);
   };
   await assert.rejects(cloud.mutateCloudRecords(rows => rows.map(r => ({ ...r, collaborator: "Bob" }))), /Otra sesión/);
 });
@@ -70,6 +75,28 @@ test("backup only permits photo signing paths from configured Supabase", () => {
   assert.equal(cloud.isCloudPhotoUrl("https://test.supabase.co/storage/v1/object/sign/agrovision-photos/owner/a?token=x"), true);
   assert.equal(cloud.isCloudPhotoUrl("https://evil.test/storage/v1/object/sign/agrovision-photos/a"), false);
   assert.equal(cloud.isCloudPhotoUrl("https://test.supabase.co/auth/v1/user"), false);
+});
+
+test("signed private photo URLs are cached per user and reused while valid", async () => {
+  const original = globalThis.fetch;
+  const photoRecord = { ...fixture, image: "supabase-storage://agrovision-photos/owner/photo.jpg" };
+  let signCalls = 0;
+  globalThis.fetch = async (input, init) => {
+    const url = new URL(String(input));
+    if (url.pathname.includes("/storage/v1/object/sign/")) {
+      signCalls++;
+      return Response.json({ signedURL: "/storage/v1/object/sign/agrovision-photos/owner/photo.jpg?token=signed" });
+    }
+    if (url.pathname.endsWith("/rest/v1/agrovision_records")) return Response.json([row(photoRecord)]);
+    throw new Error(`Unexpected request: ${url.pathname} ${init?.method || "GET"}`);
+  };
+  try {
+    const first = await cloud.readCloudRecords();
+    const second = await cloud.readCloudRecords();
+    assert.match(first[0].image, /token=signed/);
+    assert.equal(second[0].image, first[0].image);
+    assert.equal(signCalls, 1);
+  } finally { globalThis.fetch = original; }
 });
 
 test("cross-tab account changes invalidate the dashboard, token refresh keeps drafts", () => {

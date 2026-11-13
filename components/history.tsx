@@ -9,7 +9,6 @@ import {
   Leaf,
   CalendarDays,
   MapPin,
-  Ruler,
   NotebookPen,
   Pencil,
 } from "lucide-react";
@@ -206,7 +205,7 @@ export default function History({
                     <img
                       src={record.image}
                       loading="lazy"
-                      alt={`Rabanito ${record.plantId || "sin identificar"} en ${record.zone}`}
+                      alt={`${record.crop || "Cultivo"} ${record.plantId || "sin identificar"} en ${record.zone || "sin lote"}`}
                     />
                   ) : (
                     <Leaf size={52} />
@@ -245,74 +244,31 @@ export default function History({
                       <CalendarDays size={13} />
                       {dateLabel(record.date)}
                     </span>
-
-                    <span>
-                      <MapPin size={13} />
-                      {record.zone}
-                    </span>
+                    {record.zone?.trim() && (
+                      <span>
+                        <MapPin size={13} />
+                        {record.zone}
+                      </span>
+                    )}
                   </div>
 
-                  <h3>
-                    {record.plantId || "Planta sin identificar"}
-                    {" · "}
-                    Rabanito
-                  </h3>
-
-                  <p>
-                    {record.fertilizer}
-                    {" · "}
-                    {record.dose || "Dosis no registrada"}
-                  </p>
-
-                  <p>
-                    {plantAge === null
-                      ? "Fecha de siembra no válida"
-                      : `${plantAge} días desde la siembra`}
-                  </p>
-
-                  <div
-                    className="record-values"
-                    style={{ flexWrap: "wrap", gap: 12 }}
-                  >
-                    <span>
-                      <Ruler size={16} />
-                      <strong>
-                        {value(record, "heightCm") ?? "—"}
-                      </strong>
-                      {" "}cm de altura
-                    </span>
-
-                    <span>
-                      <Leaf size={16} />
-                      <strong>
-                        {value(record, "leafCount") ?? "—"}
-                      </strong>
-                      {" "}hojas
-                    </span>
-
-                    <span>
-                      <Ruler size={16} />
-                      <strong>
-                        {value(record, "diameterCm") ?? "—"}
-                      </strong>
-                      {" "}cm de diámetro
-                    </span>
-                  </div>
-
-                  <p className="muted">
-                    Altura: {sourceLabel(record, "heightCm")}
-                    <br />
-                    Hojas: {sourceLabel(record, "leafCount")}
-                    <br />
-                    Diámetro: {sourceLabel(record, "diameterCm")}
-                  </p>
+                  <h3>{record.plantId || "Planta sin identificar"}</h3>
+                  <p className="record-crop">{record.crop || "Cultivo sin especificar"}</p>
+                  {(record.fertilizer?.trim() || record.dose?.trim()) && (
+                    <p className="record-treatment">
+                      {[record.fertilizer?.trim(), record.dose?.trim()].filter(Boolean).join(" · ")}
+                    </p>
+                  )}
+                  {plantAge !== null && (
+                    <p className="record-age">{plantAge} días desde la siembra</p>
+                  )}
 
                   <div className="record-foot">
                     <span className="person-avatar">
                       {initials(record.collaborator)}
                     </span>
 
-                    <span>{record.collaborator}</span>
+                    <span>{record.collaborator || "Responsable no registrado"}</span>
 
                     <button
                       type="button"
@@ -374,7 +330,7 @@ export default function History({
             <img
               className="detail-image"
               src={details.image}
-              alt={`Fotografía del rabanito ${details.plantId || "sin identificar"}`}
+              alt={`Fotografía de ${details.crop || "cultivo"} ${details.plantId || "sin identificar"}`}
               style={{ objectFit: "contain" }}
             />
           )}

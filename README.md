@@ -1,98 +1,134 @@
-> Versión final preparada para GitHub web y Vercel. Las instrucciones de reemplazo y los códigos completos para copiar están en la carpeta superior del ZIP. Usa Node 24.x. La configuración `vercel.json` fija instalación y build de Next.js.
+# AgroVisión / TerraNova 1.2.1
 
-# AgroVision / TerraNova
+Bitácora de campo para registrar plantas, fotografías, observaciones y medidas; analizar imágenes con IA de forma orientativa; consultar crecimiento y comparar tratamientos. Esta entrega fortalece la autenticación del análisis, la integridad de Supabase, la sincronización y la experiencia de la bitácora en móvil.
 
-Bitácora de campo para registrar plantas, fotografías, observaciones y medidas; interpretar imágenes con IA de forma orientativa; consultar crecimiento y comparar tratamientos. La interfaz conserva la identidad TerraNova del proyecto original.
+## Objetivo de la versión 1.2.1
 
-## Inicio local
+Corregir los riesgos técnicos identificados en la auditoría de 1.2.0 sin reconstruir la aplicación ni eliminar datos históricos. Se mantienen el diseño TerraNova, las cuentas existentes, las bitácoras, los respaldos, el análisis visual, la comparación individual y la publicación agregada del equipo.
 
-Este paquete fija Node.js 24.x, compatible con Vercel. Verificado con Node 24.22.1.
+## Requisitos e instalación
+
+- Node.js 24.x.
+- npm compatible con Node 24.
 
 ```bash
 npm ci
 npm run dev
 ```
 
-Abrir http://localhost:3000 y seleccionar **Continuar solo en este dispositivo** si no se configuró Supabase. No se necesita clave para la demostración, el registro manual o las exportaciones. La bitácora empieza vacía. Los resultados de demostración son simulados, independientes de la foto y se etiquetan como tales.
+Abrir http://localhost:3000. Si Supabase no está configurado, se puede continuar en modo local. El registro manual, la bitácora local y las exportaciones no requieren claves de IA.
 
-## Configuración de IA
+## Variables de entorno
 
-Copiar `.env.example` a `.env.local` (en PowerShell: `Copy-Item .env.example .env.local`). Completar las claves que correspondan y reiniciar el servidor:
+Copia `.env.example` a `.env.local` y completa únicamente los servicios que utilices:
 
 ```dotenv
 GEMINI_API_KEY=
 GEMINI_MODEL=gemini-3.8-flash
 OPENAI_API_KEY=
 OPENAI_MODEL=gpt-4o
+
+# Obligatorio para análisis IA en modo local (sin Supabase).
+# Usa un secreto aleatorio de al menos 32 caracteres; no lo publiques ni lo compartas en el repositorio.
 ANALYSIS_ACCESS_TOKEN=
-```
 
-Gemini tiene prioridad si hay dos claves; la selección depende de la configuración del servidor. No hay conmutación automática a otro proveedor ni a demostraciones cuando falla una llamada real. Las claves privadas nunca deben llevar `NEXT_PUBLIC_`. Si se define `ANALYSIS_ACCESS_TOKEN`, escribir el código en el panel de análisis; permanece en memoria del navegador.
-
-El indicador de configuración solo confirma la presencia de una clave, no su validez o cuota. El servidor valida JSON y firma de imagen y envía la foto al proveedor. Zod comprueba el resultado. Timeout del proveedor: 55 segundos; cliente: 65 segundos. Los errores de cuota, autenticación, disponibilidad, formato y tiempo de espera se muestran expresamente.
-
-No se afirma una prueba real de proveedores en esta entrega. La precisión agronómica no está validada. Una foto no confirma una enfermedad; la confianza es una autoestimación no calibrada. El diámetro estimado se descarta si no se declara una escala, y el modelo debe comprobar que sea visible.
-
-## Cuenta opcional en Supabase
-
-1. Para un proyecto Supabase nuevo, ejecutar `supabase/personal-account.sql`. Para una base existente, revisar y ejecutar `supabase/actualizar_base_existente.sql` solo si corresponde a su esquema.
-2. Para habilitar la comparativa del equipo, ejecutar `supabase/comparativa-equipo.sql` después de confirmar que existen `agrovision_records` y `agrovision_members`. Luego abrir `supabase/activar-admin-comparativa.sql`, reemplazar `PON_AQUI_TU_CORREO` por el correo de la cuenta administradora y ejecutar ese bloque. No se debe compartir el correo ni el UUID en el repositorio.
-3. Completar estas variables **públicas** de `.env.local` antes de compilar:
-
-```dotenv
-NEXT_PUBLIC_SUPABASE_URL=https://TU-PROYECTO.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=TU-CLAVE-PUBLICA
+# Supabase: URL y clave pública anon/publishable, nunca service_role.
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
 NEXT_PUBLIC_AGROVISION_PROJECT_ID=rabanitos-2026
+
+# Recomendado en producción para rate limiting compartido entre instancias.
+UPSTASH_REDIS_REST_URL=
+UPSTASH_REDIS_REST_TOKEN=
 ```
 
-3. Reiniciar desarrollo o recompilar producción. Crear cuenta, confirmar correo si Supabase lo exige e iniciar sesión. Configurar en Supabase el origen permitido y los redirects de recuperación. No usar la clave `service_role` en el navegador.
+No uses prefijo `NEXT_PUBLIC_` para claves privadas de proveedores, token local ni credenciales de Upstash.
 
-Hay registro, login, cierre de sesión y recuperación de contraseña mediante Supabase Auth. Cada cuenta conserva sus registros privados; el panel de equipo no comparte bitácoras ni fotografías individuales. El administrador autorizado puede consultar una vista previa agregada y publicar una instantánea con promedios por tratamiento. Los integrantes registrados en el proyecto solo pueden consultar la última publicación; no pueden generar ni publicar la vista previa. Las fotos se guardan en un bucket privado y se leen con URLs temporales de una hora. El cliente consulta cambios cada 12 segundos mientras la pestaña está visible. Las variables `NEXT_PUBLIC_` quedan fijadas al compilar.
+## Autenticación del análisis IA
 
-La primera cuenta elegible puede migrar las observaciones reales del navegador; se conserva un marcador de propietario para no copiarlas automáticamente a otra cuenta. Una importación manual de respaldo es una acción distinta y explícita.
+La ruta `/api/analyze-crop` exige autenticación antes de procesar el cuerpo o llamar a un proveedor:
 
-La API de IA y la cuenta Supabase tienen controles separados: el login por sí solo no protege `/api/analyze-crop`. Para exponer un servidor con coste, definir el token de análisis y añadir una política de acceso y limitación adecuada al alojamiento. El limitador incluido (10 solicitudes/minuto/cliente/instancia) no es un control distribuido resistente al abuso.
+- **Modo nube:** el navegador envía el access token de Supabase. El servidor lo verifica contra `/auth/v1/user` usando la URL y la clave pública del proyecto. Un JWT ausente, inválido o vencido se rechaza.
+- **Modo local:** si Supabase no está configurado, se exige `ANALYSIS_ACCESS_TOKEN`. El código se introduce en el panel de análisis y se mantiene solo en memoria del navegador.
+- Si no existe ningún mecanismo de autenticación en el servidor, el endpoint responde `AUTH_NOT_CONFIGURED` y no llama a Gemini/OpenAI.
 
-## Funciones implementadas
+El endpoint limita el cuerpo de la solicitud, valida la firma básica de la imagen, valida la respuesta del modelo con Zod y devuelve errores controlados. No se utiliza una respuesta demostrativa cuando falla el proveedor.
 
-- JPG, PNG, WEBP y HEIC/HEIF si el navegador puede decodificarlos; máximo 12 MiB de entrada. Conversión a JPEG con lado mayor de 1280 px; el servidor limita el cuerpo a 4,2 MB y la data URL a 4.000.000 de caracteres, por debajo del límite de Vercel. Un HEIC incompatible muestra error en vez de simular una conversión.
-- Análisis orientativo, demostración explícita y registro manual. Se preservan las observaciones originales de IA y las medidas manuales por separado.
-- Identificación de planta por cultivo + lote + código + fecha de siembra; tratamiento y dosis consistentes; una observación real por fecha y planta, validada en el cliente.
-- Bitácora con búsqueda, filtros, detalle, corrección y eliminación con confirmación. Se pueden corregir registros antiguos sin inventar seguimiento faltante; estos siguen excluidos de cálculos que necesitan siembra y dosis.
-- Crecimiento, comparación por tratamiento/dosis y edad; promedios y desviación estándar muestral. No se trata como cero una medida faltante y no se equipara una estimación IA con una medida manual.
-- CSV completo con procedencia, diagnóstico y crecimiento; PDF por planta con historial, gráficas manuales y observaciones/recomendaciones/limitaciones de IA. Las fotos no se incrustan: se conservan en el respaldo JSON.
-- Respaldo JSON portable con fotos y restauración por ID sin sobrescribir los existentes. En modo nube se escribe en la nube y se espera su resultado; no se incorpora accidentalmente la bitácora local.
-- Resumen general administrativo con tarjetas de indicadores, gráfico de crecimiento, tabla de tratamientos y promedios de altura, crecimiento, hojas, diámetro y estado sanitario.
-- Publicación explícita de resultados agregados para el equipo; los integrantes ven solo la última instantánea aprobada en una vista de solo lectura.
-- Cuatro protocolos de buenas prácticas, temas claro/oscuro y diseño con reglas adaptables a móvil.
+### Límite de solicitudes
 
-## Almacenamiento y modo sin conexión
+El límite autenticado es de 10 solicitudes por ventana de 60 segundos y por identidad; antes de verificar la sesión se aplica también un límite de 30 solicitudes por IP de proxy por minuto. Para compartir el contador entre instancias de Vercel configura `UPSTASH_REDIS_REST_URL` y `UPSTASH_REDIS_REST_TOKEN`. Si no se configuran, se usa un límite por instancia (adecuado para desarrollo, no equivalente a un limitador distribuido). Si Upstash está configurado pero no responde, el endpoint falla cerrado con HTTP 429 temporal en vez de omitir la protección.
 
-Sin Supabase: IndexedDB, base `agrovision`, almacén `data`, clave `records`. Cada modificación local usa una transacción de lectura/escritura. BroadcastChannel avisa a otras pestañas compatibles del mismo origen. Borrar datos del navegador borra esta bitácora: descargar respaldos periódicamente.
+## Configuración y migración Supabase
 
-En producción el service worker guarda HTML, JS/CSS iniciales y recursos de marca al instalarse. Una primera visita debe terminar la instalación antes de desconectarse. No guarda respuestas de API ni llamadas externas. El modo local permite consultar/registrar sin internet. El PDF necesita haber descargado sus módulos dinámicos previamente. En modo nube no hay cola offline ni réplica local: las operaciones necesitan conexión. Las URLs firmadas de fotos vencen y se renuevan al consultar la nube.
+**Antes de ejecutar SQL en producción, exporta un respaldo de la base de datos y verifica las tablas actuales.** Estas migraciones no se han ejecutado automáticamente desde este ZIP.
 
-No hay sensores IoT, diagnóstico agronómico confirmado ni análisis local de imágenes. La colaboración se limita al resumen agregado publicado por el administrador; no existe una bitácora compartida editable entre cuentas. El entorno no permitió una prueba visual en navegador; consultar `INFORME_AUDITORIA.md` y `VERIFICACION_VERCEL.md` para límites y pendientes.
+Orden recomendado:
 
-## Verificación y producción
+1. Instalación nueva: ejecutar `supabase/personal-account.sql`.
+2. Base existente: revisar primero `supabase/verificar_estructura.sql`; ejecutar `supabase/actualizar_base_existente.sql` solo si corresponde al esquema instalado.
+3. Ejecutar `supabase/hardening-1.2.1.sql` en un proyecto de pruebas. Esta migración crea/asegura membresías por proyecto, valida medidas y fechas en el servidor, restringe RLS a miembros autorizados y añade una RPC transaccional.
+4. Ejecutar `supabase/comparativa-equipo.sql` para instalar las funciones de comparación y publicación. El script detecta membresías duplicadas y se detiene sin borrarlas automáticamente.
+5. Ejecutar `supabase/activar-admin-comparativa.sql`, sustituyendo el correo de ejemplo por el de la cuenta administradora. Este paso registra al administrador como miembro del proyecto.
+6. Ejecutar `supabase/registrar-integrante.sql` por cada integrante autorizado, sustituyendo el correo y nombre de ejemplo. La pertenencia ya no se concede automáticamente por conocer el identificador del proyecto.
+7. Validar primero con cuentas y datos de prueba. Solo después repetir el procedimiento en producción.
+
+La tabla `agrovision_members` se identifica por `project_id + user_id`. Una cuenta puede participar en varios proyectos. La membresía es explícita: el administrador debe registrar a cada cuenta autorizada mediante SQL; conocer el identificador público del proyecto no basta para escribir ni consultar publicaciones. El resumen cuenta las membresías autorizadas, aunque todavía no hayan registrado observaciones. La migración se detiene si detecta políticas RLS adicionales en `agrovision_records`, porque PostgreSQL combina políticas permisivas mediante OR; deben revisarse manualmente antes de continuar. Los resultados publicados siguen siendo agregados; no incluyen fotografías ni observaciones individuales.
+
+## Cambios principales de 1.2.1
+
+- Verificación de JWT Supabase en servidor para el endpoint IA.
+- Token local obligatorio cuando no hay Supabase.
+- Comparación de token local en tiempo constante.
+- Límite de solicitudes por identidad y soporte opcional de Upstash Redis.
+- Cabeceras HTTP de seguridad y Content Security Policy.
+- Tabla de membresías por proyecto y corrección de consultas por `project_id + user_id`.
+- Validaciones SQL para medidas, fechas, duplicados por planta/fecha y consistencia de tratamiento.
+- RPC transaccional para altas, ediciones y eliminaciones con control de concurrencia por `updated_at`.
+- Cálculo de crecimiento entre mediciones del mismo tratamiento.
+- Caché de URLs firmadas de fotografías por usuario, con renovación antes de vencer y concurrencia limitada.
+- Bitácora móvil con jerarquía visual uniforme, una columna en teléfonos y tarjetas más limpias; los detalles y mediciones completas permanecen en la vista expandida.
+- Corrección de opción duplicada en el filtro de estado.
+- Documentación de objetivo, observaciones, migración y criterios de aceptación.
+
+## Pruebas y verificación
 
 ```bash
+npm ci
 npm run typecheck
 npm test
 npm run build
-npm start
 ```
 
-Se actualizaron Next.js a 16.4.3, React a 19.3.1, Zod a 4.6.7 y jsPDF a 4.2.1 para resolver avisos de dependencias; el diseño y los datos de IndexedDB se conservan. El build usa Webpack explícitamente. La compilación no sustituye una prueba visual. No existe un comando de lint independiente configurado.
+O ejecutar todo con:
 
-`npm run build:site` es un adaptador opcional: genera una copia estática y un Worker ESM con la API en `dist/server/index.js`. No publica nada. Si existe `.openai/hosting.json`, lo copia; de lo contrario informa que falta configurar destino. Para ese adaptador, proporcionar las variables públicas como variables del proceso de build; la copia temporal no incluye `.env.local`. Las claves del proveedor se suministran al Worker en ejecución. No poner secretos en archivos de hosting ni en el ZIP.
+```bash
+npm run verify
+```
 
-## Archivos principales
+La CI usa Node 24. Esta entrega incluye pruebas nuevas de autenticación Supabase, rechazo de sesiones inválidas, configuración de autenticación y caché de URLs firmadas. La verificación integral de build, pruebas, migración SQL y despliegue debe ejecutarse en un entorno con Node 24 y credenciales de pruebas. No se afirma que las migraciones hayan sido aplicadas a tu instancia real.
 
-`app/api/analyze-crop/route.ts` adapta la API de Next al motor `lib/analysis-server.ts`. `components/auth-gate.tsx` resuelve cuenta/local y `components/dashboard.tsx` coordina vistas, persistencia y análisis. `report-form`, `history`, `edit-observation`, `comparison`, `team-comparison` y `published-team-comparison` implementan los flujos de campo y el resumen de equipo. `lib/storage.ts` maneja IndexedDB, `lib/cloud.ts` Supabase, `lib/backup.ts` validación de respaldos, `lib/tracking.ts` identidad/fechas/crecimiento, `lib/metrics.ts` estadísticas y CSV seguro, `lib/exports.ts` los archivos CSV/PDF. `public/sw.js` implementa la caché offline.
+## Límites y consideraciones operativas
 
-## Referencias
+- Las sesiones Supabase del cliente continúan almacenándose en `localStorage`; la verificación del JWT en el servidor no equivale a una migración a cookies `HttpOnly`. Evita insertar HTML no confiable y mantén actualizadas las dependencias.
+- El límite por instancia es un fallback; configura Upstash para producción multi-instancia.
+- La RPC de datos necesita que `supabase/hardening-1.2.1.sql` se aplique antes de desplegar el código que la utiliza.
+- La subida de fotografías a Storage ocurre antes de la transacción de metadatos. Si la RPC falla después de subir una imagen nueva, podría quedar un objeto sin referencia; revisa Storage antes de hacer limpiezas automáticas.
+- No hay cola de escritura offline en modo nube. Las operaciones de nube requieren conexión.
+- El análisis IA es orientativo; no confirma enfermedades ni sustituye mediciones manuales.
 
-- Modelo Gemini: https://ai.google.dev/gemini-api/docs/models/gemini-3.8-flash
-- Actualización Next: https://nextjs.org/docs/app/guides/upgrading/version-16
-- Foto de muestra: Omar Roque, Unsplash: https://unsplash.com/photos/a-bunch-of-radishes-sitting-on-top-of-green-leaves-qGTl7GssT5w (Unsplash License).
+## Estructura principal
+
+- `app/`: App Router y endpoint de análisis.
+- `components/`: autenticación, Dashboard, bitácora, análisis y comparaciones.
+- `lib/`: autenticación/sincronización, almacenamiento, métricas, validaciones y exportaciones.
+- `supabase/`: SQL de instalación, actualización y hardening.
+- `tests/`: pruebas unitarias y de regresión.
+- `docs/`: observaciones técnicas y guía de liberación.
+
+## Despliegue
+
+1. Configura las variables en Vercel.
+2. Ejecuta las migraciones en Supabase de pruebas y valida las cuentas.
+3. Publica una Preview desde una rama, no directamente desde `main`.
+4. Prueba login, análisis IA, bitácora, fotografías, comparación, publicación y modo móvil.
+5. Integra a `main` solo tras aprobar QA y confirmar que la migración SQL está aplicada.
