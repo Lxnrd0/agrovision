@@ -1264,7 +1264,7 @@ textarea::placeholder {
 }
 .record-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 20px;
 }
 .record-card {
@@ -1272,9 +1272,13 @@ textarea::placeholder {
   border: 1px solid var(--border);
   border-radius: 10px;
   overflow: hidden;
+  min-width: 0;
 }
 .record-image {
-  height: 175px;
+  width: 100%;
+  height: auto;
+  min-width: 0;
+  aspect-ratio: 16 / 9;
   background: var(--inset);
   position: relative;
   display: grid;
@@ -1282,9 +1286,12 @@ textarea::placeholder {
   color: var(--green-text);
 }
 .record-image img {
+  position: absolute;
+  inset: 0;
+  display: block;
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
 }
 .record-image > .badge {
   position: absolute;
@@ -1327,11 +1334,15 @@ textarea::placeholder {
   border-radius: 3px;
 }
 .record-body {
+  min-width: 0;
   padding: 17px;
 }
 .record-meta {
   display: flex;
   justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
   color: var(--dim);
   font-size: 10px;
   margin-bottom: 12px;
@@ -1340,14 +1351,23 @@ textarea::placeholder {
   display: flex;
   align-items: center;
   gap: 5px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.record-meta > span svg {
+  flex: 0 0 auto;
 }
 .record-body h3 {
   font-size: 19px;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .record-body > p {
   font-size: 12px;
   color: var(--muted);
   margin: 3px 0 15px;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .record-values {
   display: flex;
@@ -1376,6 +1396,7 @@ textarea::placeholder {
   align-items: center;
   gap: 7px;
   margin-top: 12px;
+  min-width: 0;
 }
 .person-avatar {
   width: 24px;
@@ -1392,6 +1413,8 @@ textarea::placeholder {
   font-size: 10px;
   color: var(--muted);
   margin-right: auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .danger:hover {
   color: #f28f84;
@@ -2173,7 +2196,7 @@ textarea {
     grid-template-columns: repeat(2, 1fr);
   }
   .record-grid {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .filter-bar {
     flex-wrap: wrap;
@@ -3330,9 +3353,6 @@ textarea {
     height: auto;
     min-width: 0;
     aspect-ratio: 16 / 9;
-  }
-  .record-image img {
-    object-fit: cover;
   }
   .record-image-delete {
     width: 44px;
