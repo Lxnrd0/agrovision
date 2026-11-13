@@ -115,3 +115,83 @@ test("cloud reads all rows when the server caps pages below the requested size",
   };
   assert.equal((await cloud.readCloudRecords()).length, 235);
 });
+
+test("mobile photo upload decodes data URLs locally and uses a stable Supabase Storage path", async () => {
+  const photo = { ...fixture, id: "photo-record-1", image: "data:image/jpeg;base64,/9j/2Q==" };
+  let uploadedBlob: Blob | null = null;
+  let storagePath = "";
+  let restReads = 0;
+  globalThis.fetch = async (input, init) => {
+    const url = new URL(String(input));
+    assert.notEqual(url.protocol, "data:", "the browser must not fetch data URLs");
+    if (url.pathname.endsWith("/rest/v1/agrovision_records") && (!init?.method || init.method === "GET")) {
+      restReads += 1;
+      return Response.json([]);
+    }
+    if (url.pathname.includes("/storage/v1/object/agrovision-photos/")) {
+      storagePath = url.pathname;
+      uploadedBlob = init?.body as Blob;
+      return Response.json({ Key: "uploaded" });
+    }
+    if (url.pathname.endsWith("/rpc/agrovision_records_apply_batch")) {
+      const body = JSON.parse(String(init?.body));
+      assert.equal(body.p_upserts[0].payload.image, "supabase-storage://agrovision-photos/owner/photo-record-1.jpg");
+      return Response.json({ upserted: 1, deleted: 0 });
+    }
+    throw new Error(`Unexpected request: ${url.pathname}`);
+  };
+
+  const saved = await cloud.mutateCloudRecords(() => [photo]);
+  assert.equal(saved[0].id, photo.id);
+  assert.equal(saved[0].image, photo.image, "keep the local preview visible after a successful save");
+  assert.ok(uploadedBlob instanceof Blob);
+  assert.equal(uploadedBlob?.type, "image/jpeg");
+  assert.match(storagePath, /photo-record-1\.jpg$/);
+  assert.equal(restReads, 1, "do not issue a second read after the write has committed");
+});
+
+test("a successful cloud commit is not reported as failed by a post-commit refresh", async () => {
+  let committed = false;
+  let recordReads = 0;
+  globalThis.fetch = async (input, init) => {
+    const url = new URL(String(input));
+    if (url.pathname.endsWith("/rest/v1/agrovision_records")) {
+      recordReads += 1;
+      return Response.json([]);
+    }
+    if (url.pathname.endsWith("/rpc/agrovision_records_apply_batch")) {
+      committed = true;
+      return Response.json({ upserted: 1, deleted: 0 });
+    }
+    if (committed) throw new TypeError("Load failed");
+    throw new Error(`Unexpected request: ${url.pathname}`);
+  };
+
+  const saved = await cloud.mutateCloudRecords(() => [{ ...fixture, id: "committed-once" }]);
+  assert.equal(saved[0].id, "committed-once");
+  assert.equal(committed, true);
+  assert.equal(recordReads, 1);
+});
+
+test("network errors are translated into a useful Supabase message", async () => {
+  globalThis.fetch = async () => { throw new TypeError("Load failed"); };
+  await assert.rejects(
+    cloud.readCloudRecords(),
+    /No se pudo consultar la bitácora en Supabase.*Load failed/,
+  );
+});
+
+
+test("a temporary private-photo signing failure does not block loading the observation", async () => {
+  const photoRecord = { ...fixture, image: "supabase-storage://agrovision-photos/owner/photo.jpg" };
+  globalThis.fetch = async (input) => {
+    const url = new URL(String(input));
+    if (url.pathname.endsWith("/rest/v1/agrovision_records")) return Response.json([row(photoRecord)]);
+    if (url.pathname.includes("/storage/v1/object/sign/")) throw new TypeError("Load failed");
+    throw new Error(`Unexpected request: ${url.pathname}`);
+  };
+  const records = await cloud.readCloudRecords();
+  assert.equal(records.length, 1);
+  assert.equal(records[0].id, photoRecord.id);
+  assert.equal(records[0].image, photoRecord.image, "keep the private storage reference so a later refresh can retry");
+});
