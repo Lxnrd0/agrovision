@@ -145,7 +145,6 @@ export function status(env: EngineEnv) {
           : null,
       model: provider ? configuredModel(env) : null,
       requiresToken: !cloudAuth,
-      localTokenConfigured: localAuth,
       rateLimitMode: env.UPSTASH_REDIS_REST_URL && env.UPSTASH_REDIS_REST_TOKEN
         ? "distributed"
         : "per-instance",
@@ -180,53 +179,41 @@ async function authenticateRequest(
   const token = match?.[1]?.trim();
   if (!token) return { response: fail("Debes iniciar sesión para utilizar el análisis.", 401, "AUTH_REQUIRED") };
 
-  const requestedMode = (request.headers.get("x-analysis-mode") || "").trim().toLowerCase();
-  if (requestedMode && requestedMode !== "local" && requestedMode !== "cloud") {
-    return { response: fail("El modo de autenticación solicitado no es válido.", 400, "INVALID_AUTH_MODE") };
+  if (hasSupabaseAuth(env)) {
+    const supabaseUrl = env.SUPABASE_URL!.replace(/\/$/, "");
+    try {
+      const response = await fetch(`${supabaseUrl}/auth/v1/user`, {
+        method: "GET",
+        headers: {
+          apikey: env.SUPABASE_ANON_KEY!,
+          Authorization: `Bearer ${token}`,
+        },
+        cache: "no-store",
+      });
+      if (!response.ok) {
+        return { response: fail("La sesión no es válida o ha caducado. Inicia sesión nuevamente.", 401, "INVALID_SESSION") };
+      }
+      const user = await response.json() as { id?: unknown };
+      if (typeof user?.id !== "string" || !user.id) {
+        return { response: fail("Supabase no devolvió una identidad válida.", 401, "INVALID_SESSION") };
+      }
+      return { principal: `supabase:${user.id}` };
+    } catch {
+      return { response: fail("No se pudo verificar la sesión con Supabase. Inténtalo nuevamente.", 503, "AUTH_PROVIDER_UNAVAILABLE") };
+    }
   }
 
   const expected = env.ANALYSIS_ACCESS_TOKEN?.trim();
-  const localTokenConfigured = Boolean(expected && expected.length >= MIN_LOCAL_TOKEN_LENGTH);
-  const cloudAuthConfigured = hasSupabaseAuth(env);
-  if (requestedMode === "cloud" && !cloudAuthConfigured) {
-    return { response: fail("La autenticación de Supabase no está configurada en el servidor.", 503, "AUTH_NOT_CONFIGURED") };
+  if (!expected || expected.length < MIN_LOCAL_TOKEN_LENGTH) {
+    return { response: fail("El análisis no tiene autenticación configurada. Define Supabase o ANALYSIS_ACCESS_TOKEN en el servidor.", 503, "AUTH_NOT_CONFIGURED") };
   }
-  const useLocalAuth = requestedMode === "local" || (!cloudAuthConfigured && requestedMode !== "cloud");
-
-  if (useLocalAuth) {
-    if (!localTokenConfigured) {
-      return { response: fail("El análisis local no tiene autenticación configurada. Define ANALYSIS_ACCESS_TOKEN (32 caracteres como mínimo) en el servidor.", 503, "AUTH_NOT_CONFIGURED") };
-    }
-    if (!constantTimeTokenMatch(token, expected!)) {
-      return { response: fail("El código de acceso local no es válido.", 401, "INVALID_ACCESS_TOKEN") };
-    }
-    // In local mode the shared access code is supplemented by a proxy-provided IP.
-    // x-client-id and the leftmost x-forwarded-for value are deliberately ignored.
-    const remote = request.headers.get("x-real-ip") || request.headers.get("cf-connecting-ip") || "shared-local-client";
-    return { principal: `local:${remote.slice(0, 120)}` };
+  if (!constantTimeTokenMatch(token, expected)) {
+    return { response: fail("El código de acceso no es válido.", 401, "INVALID_ACCESS_TOKEN") };
   }
-
-  const supabaseUrl = env.SUPABASE_URL!.replace(/\/$/, "");
-  try {
-    const response = await fetch(`${supabaseUrl}/auth/v1/user`, {
-      method: "GET",
-      headers: {
-        apikey: env.SUPABASE_ANON_KEY!,
-        Authorization: `Bearer ${token}`,
-      },
-      cache: "no-store",
-    });
-    if (!response.ok) {
-      return { response: fail("La sesión no es válida o ha caducado. Inicia sesión nuevamente.", 401, "INVALID_SESSION") };
-    }
-    const user = await response.json() as { id?: unknown };
-    if (typeof user?.id !== "string" || !user.id) {
-      return { response: fail("Supabase no devolvió una identidad válida.", 401, "INVALID_SESSION") };
-    }
-    return { principal: `supabase:${user.id}` };
-  } catch {
-    return { response: fail("No se pudo verificar la sesión con Supabase. Inténtalo nuevamente.", 503, "AUTH_PROVIDER_UNAVAILABLE") };
-  }
+  // In local mode the shared access code is supplemented by a proxy-provided IP.
+  // x-client-id and the leftmost x-forwarded-for value are deliberately ignored.
+  const remote = request.headers.get("x-real-ip") || request.headers.get("cf-connecting-ip") || "shared-local-client";
+  return { principal: `local:${remote.slice(0, 120)}` };
 }
 
 async function consumeRateLimit(

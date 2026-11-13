@@ -49,9 +49,8 @@ No uses prefijo `NEXT_PUBLIC_` para claves privadas de proveedores, token local 
 La ruta `/api/analyze-crop` exige autenticación antes de procesar el cuerpo o llamar a un proveedor:
 
 - **Modo nube:** el navegador envía el access token de Supabase. El servidor lo verifica contra `/auth/v1/user` usando la URL y la clave pública del proyecto. Un JWT ausente, inválido o vencido se rechaza.
-- **Modo local:** se exige `ANALYSIS_ACCESS_TOKEN` de al menos 32 caracteres. El cliente marca explícitamente el modo local con `X-Analysis-Mode: local`; esto también funciona si el proyecto tiene variables Supabase configuradas. El código se introduce en el panel y se mantiene solo en memoria del navegador.
-- **Modo nube:** el cliente envía el access token de Supabase y el servidor lo verifica contra `/auth/v1/user`.
-- Si el mecanismo de autenticación elegido no está configurado en el servidor, el endpoint responde `AUTH_NOT_CONFIGURED` y no llama a Gemini/OpenAI.
+- **Modo local:** si Supabase no está configurado, se exige `ANALYSIS_ACCESS_TOKEN`. El código se introduce en el panel de análisis y se mantiene solo en memoria del navegador.
+- Si no existe ningún mecanismo de autenticación en el servidor, el endpoint responde `AUTH_NOT_CONFIGURED` y no llama a Gemini/OpenAI.
 
 El endpoint limita el cuerpo de la solicitud, valida la firma básica de la imagen, valida la respuesta del modelo con Zod y devuelve errores controlados. No se utiliza una respuesta demostrativa cuando falla el proveedor.
 
@@ -65,16 +64,16 @@ El límite autenticado es de 10 solicitudes por ventana de 60 segundos y por ide
 
 Orden recomendado:
 
-1. En una instalación nueva, ejecutar `supabase/personal-account.sql`.
-2. En una base existente, revisar `supabase/verificar_estructura.sql` y ejecutar `supabase/preflight-hardening-1.2.1.sql` (solo lectura).
-3. Ejecutar `supabase/hardening-1.2.1.sql` primero en un proyecto Supabase de pruebas. La migración sustituye las cuatro políticas legacy conocidas; si encuentra políticas distintas o claves foráneas dependientes de la PK antigua, aborta y revierte.
-4. Ejecutar `supabase/comparativa-equipo.sql` después de la migración para instalar o actualizar las funciones de comparación y publicación.
-5. Comprobar que el administrador y los integrantes ya estén registrados en `agrovision_members`. Ejecutar `activar-admin-comparativa.sql` o `registrar-integrante.sql` únicamente para cuentas que realmente falten; no volver a registrar las dos cuentas existentes.
-6. Probar lectura, escritura, eliminación, fotos, publicación y consulta con dos cuentas de prueba. Solo después planificar una ventana de migración de producción con respaldo reciente.
+1. Instalación nueva: ejecutar `supabase/personal-account.sql`.
+2. Base existente: revisar primero `supabase/verificar_estructura.sql`; ejecutar `supabase/actualizar_base_existente.sql` solo si corresponde al esquema instalado.
+3. Ejecutar `supabase/hardening-1.2.1.sql` en un proyecto de pruebas. Esta migración crea/asegura membresías por proyecto, valida medidas y fechas en el servidor, restringe RLS a miembros autorizados y añade una RPC transaccional.
+4. Ejecutar `supabase/comparativa-equipo.sql` para instalar las funciones de comparación y publicación. El script detecta membresías duplicadas y se detiene sin borrarlas automáticamente.
+5. Ejecutar `supabase/activar-admin-comparativa.sql`, sustituyendo el correo de ejemplo por el de la cuenta administradora. Este paso registra al administrador como miembro del proyecto.
+6. Ejecutar `supabase/registrar-integrante.sql` por cada integrante autorizado, sustituyendo el correo y nombre de ejemplo. La pertenencia ya no se concede automáticamente por conocer el identificador del proyecto.
+7. Validar primero con cuentas y datos de prueba. Solo después repetir el procedimiento en producción.
 
-La migración convierte la clave primaria de `agrovision_members` a `project_id + user_id`, si no existen claves foráneas que dependan de la clave anterior. Una cuenta puede participar en varios proyectos. La membresía es explícita: el administrador debe registrar a cada cuenta autorizada; conocer el identificador público del proyecto no basta para escribir ni consultar publicaciones. El resumen cuenta las membresías autorizadas, aunque todavía no hayan registrado observaciones. La migración sustituye las cuatro políticas legacy conocidas de `agrovision_records` y se detiene si detecta otras políticas no reconocidas, porque PostgreSQL combina políticas permisivas mediante OR. Los resultados publicados siguen siendo agregados; no incluyen fotografías ni observaciones individuales.
+La tabla `agrovision_members` se identifica por `project_id + user_id`. Una cuenta puede participar en varios proyectos. La membresía es explícita: el administrador debe registrar a cada cuenta autorizada mediante SQL; conocer el identificador público del proyecto no basta para escribir ni consultar publicaciones. El resumen cuenta las membresías autorizadas, aunque todavía no hayan registrado observaciones. La migración se detiene si detecta políticas RLS adicionales en `agrovision_records`, porque PostgreSQL combina políticas permisivas mediante OR; deben revisarse manualmente antes de continuar. Los resultados publicados siguen siendo agregados; no incluyen fotografías ni observaciones individuales.
 
-**Para la base de producción que ya tiene las dos cuentas registradas, no ejecutes los scripts de alta para esas mismas cuentas.**
 ## Cambios principales de 1.2.1
 
 - Verificación de JWT Supabase en servidor para el endpoint IA.

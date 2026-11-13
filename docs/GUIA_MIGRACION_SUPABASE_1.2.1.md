@@ -1,78 +1,38 @@
-# Guía de migración Supabase — AgroVisión 1.2.1 (revisión de compatibilidad)
+# Guía de migración Supabase — AgroVisión 1.2.1
 
-## Estado y advertencia
+## Estado y precauciones
 
-Esta guía corresponde al paquete corregido para la rama `hardening/agrovision-1.2.1`.
+- La rama `hardening/agrovision-1.2.1` se valida independientemente de `main`.
+- No ejecutar migraciones contra producción hasta probarlas en un proyecto Supabase separado.
+- Hacer respaldo de la base y del bucket `agrovision-photos` antes de cualquier migración real.
+- Nunca incluir claves `service_role`, contraseñas, correos reales ni UUID personales en Git.
+- El archivo `preflight-hardening-1.2.1.sql` es exclusivamente de lectura.
 
-**No ejecutes los SQL directamente en producción como primer paso.** El Preview de Vercel usa el Supabase de producción, por lo que las acciones de escritura desde la interfaz también afectarían los datos reales. Las migraciones deben probarse primero en un proyecto Supabase separado.
+## Orden seguro
 
-## Protección previa
+1. Ejecutar `supabase/preflight-hardening-1.2.1.sql` y guardar su resultado.
+2. Confirmar que el esquema y las políticas coinciden con la instalación esperada.
+3. Probar `supabase/hardening-1.2.1.sql` en una base de pruebas con una copia anonimizada del esquema.
+4. Probar altas, ediciones, eliminaciones, concurrencia, permisos de ambas cuentas y publicación.
+5. Solo después de aprobación explícita, planificar la migración de producción con respaldo verificado.
 
-1. Exporta un respaldo de la base de datos y conserva una copia de los objetos del bucket `agrovision-photos`.
-2. Ejecuta `supabase/preflight-hardening-1.2.1.sql` en el proyecto que se va a migrar. Es una consulta de solo lectura.
-3. Confirma que `project_id` sea `rabanitos-2026` para las dos membresías existentes.
-4. Confirma que ambas cuentas ya figuren en `agrovision_members`. No vuelvas a registrarlas.
-5. No compartas claves `service_role`, contraseñas, correos reales ni UUID personales.
+## Compatibilidad incluida
 
-## Orden recomendado para una base existente
+- Conserva la clave primaria existente de `agrovision_members`.
+- Comprueba si ya existe un índice único por `(project_id, user_id)` antes de crear otro.
+- Acepta las cuatro políticas CRUD seguras existentes (`agrovision_records_select/insert/update/delete`) y las valida sin borrarlas.
+- Para instalaciones sin políticas, crea las cuatro políticas CRUD restrictivas.
+- Rechaza configuraciones parciales o no reconocidas en vez de borrar políticas automáticamente.
+- Mantiene revocado el acceso directo de `authenticated` a `agrovision_members`; la aplicación usa funciones autorizadas para consultar membresías.
+- No elimina observaciones, integrantes, usuarios, publicaciones ni fotografías.
 
-1. Crear un proyecto Supabase de pruebas y reproducir allí el esquema y los datos anonimizados necesarios.
-2. Ejecutar `supabase/preflight-hardening-1.2.1.sql`.
-3. Revisar el resultado de la preflight y confirmar que no haya políticas RLS desconocidas ni claves foráneas que dependan de la PK antigua de membresías.
-4. Ejecutar `supabase/hardening-1.2.1.sql` en la base de pruebas.
-5. Ejecutar nuevamente la preflight y `supabase/verificar_estructura.sql`.
-6. Probar lectura, inserción, edición y eliminación con dos cuentas de prueba distintas.
-7. Probar publicación y consulta de la comparativa con una cuenta administradora y una integrante.
-8. Solo después de aprobar las pruebas y obtener un respaldo reciente, planificar una ventana de migración de producción.
+## Verificación
 
-## Qué corrige `hardening-1.2.1.sql`
+Ejecutar el preflight antes y después de la migración en el entorno de pruebas y comparar:
+- Conteo de membresías y observaciones.
+- Clave primaria e índices únicos.
+- Políticas RLS y expresiones.
+- Triggers y funciones RPC.
+- Permisos de lectura directa de membresías.
 
-- Conserva las filas de `agrovision_members` y convierte la clave primaria antigua `user_id` en la clave compuesta `(project_id, user_id)`, siempre que no existan claves foráneas dependientes. Si las encuentra, aborta sin cambios.
-- Completa `member_name` y `joined_at` sin reemplazar los nombres ya existentes.
-- Mantiene el acceso directo a `agrovision_members` revocado para `anon` y `authenticated`; la comprobación de pertenencia se realiza mediante una función `SECURITY DEFINER` con `auth.uid()`.
-- Sustituye únicamente las cuatro políticas legacy conocidas de `agrovision_records`. Si encuentra políticas adicionales no reconocidas, aborta y revierte la transacción.
-- Evita duplicar el trigger de `updated_at`, reconociendo los dos nombres históricos usados por el proyecto.
-- Añade validaciones de payload, medidas, fechas, duplicados por planta/fecha y consistencia de tratamiento.
-- Instala `agrovision_records_apply_batch`, una RPC `SECURITY INVOKER` transaccional con control optimista mediante `updated_at` y autorización de membresía por proyecto.
-- Desactiva el trigger de alta automática de membresías, pero conserva la función histórica sin asociarla a un trigger.
-- No elimina observaciones, fotografías, usuarios, publicaciones ni membresías.
-
-## Alta de un integrante nuevo
-
-`supabase/registrar-integrante.sql` es únicamente para una cuenta nueva que aún no pertenezca al proyecto. Debe ejecutarse después de la migración, sustituyendo localmente el correo de ejemplo. Usa `ON CONFLICT DO NOTHING` para no sobrescribir el nombre ni la fecha de ingreso de un miembro existente.
-
-**Para el proyecto actual, las dos cuentas ya registradas no necesitan este script. No lo ejecutes para ellas.**
-
-## Verificación posterior
-
-```sql
-select project_id, user_id, member_name, joined_at
-from public.agrovision_members
-order by project_id, joined_at;
-
-select count(*) as records_count
-from public.agrovision_records;
-
-select proname
-from pg_proc
-join pg_namespace n on n.oid = pg_proc.pronamespace
-where n.nspname = 'public'
-  and proname in (
-    'agrovision_is_project_member',
-    'agrovision_records_apply_batch'
-  );
-```
-
-Pruebas funcionales, en una base de pruebas:
-
-1. Cuenta A solo puede leer y modificar sus observaciones.
-2. Cuenta B no puede leer ni modificar observaciones de A.
-3. Un usuario no miembro no puede leer ni escribir registros del proyecto.
-4. La cuenta administradora puede generar y publicar el resumen agregado.
-5. La cuenta integrante puede consultar la publicación, pero no publicarla.
-6. Un `updated_at` obsoleto provoca conflicto y revierte todo el lote.
-7. Las fotografías privadas continúan accesibles únicamente al propietario.
-
-## Reversión
-
-La migración está dentro de una transacción y aborta ante las condiciones de preflight descritas. Sin embargo, no debe asumirse que revertir el código revierte automáticamente una migración ya confirmada. Conserva el respaldo previo y prepara una migración de reversión específica si se aprueba el despliegue.
+No considerar una migración aprobada solo porque el SQL termina en `Success`: deben pasar las pruebas funcionales y de aislamiento con dos cuentas.

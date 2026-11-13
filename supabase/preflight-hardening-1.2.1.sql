@@ -1,58 +1,36 @@
--- SOLO LECTURA. Ejecutar antes de hardening-1.2.1.sql.
--- No inserta, actualiza, elimina ni modifica permisos.
-
+-- AgroVisión 1.2.1 — preflight de solo lectura.
+-- Ejecutar antes de la migración. No crea ni modifica objetos ni datos.
 select jsonb_build_object(
-  'members', jsonb_build_object(
-    'columns', (
-      select coalesce(jsonb_agg(jsonb_build_object(
-        'name', column_name, 'type', data_type, 'nullable', is_nullable
-      ) order by ordinal_position), '[]'::jsonb)
-      from information_schema.columns
-      where table_schema='public' and table_name='agrovision_members'
-    ),
-    'rows', (
-      select coalesce(jsonb_agg(jsonb_build_object(
-        'project_id', project_id, 'members', member_count
-      )), '[]'::jsonb)
-      from (
-        select project_id, count(*)::integer as member_count
-        from public.agrovision_members group by project_id
-      ) x
-    ),
-    'primary_key', (
-      select pg_get_constraintdef(oid)
-      from pg_constraint
-      where conrelid='public.agrovision_members'::regclass and contype='p'
-      limit 1
-    ),
-    'foreign_keys_referencing_members', (
-      select count(*)::integer from pg_constraint
-      where confrelid='public.agrovision_members'::regclass and contype='f'
-    ),
-    'duplicate_project_users', (
-      select count(*)::integer from (
-        select project_id, user_id
-        from public.agrovision_members
-        group by project_id, user_id having count(*) > 1
-      ) d
-    )
+  'project_id', current_database(),
+  'members', (select count(*) from public.agrovision_members),
+  'records', (select count(*) from public.agrovision_records),
+  'members_primary_key', (
+    select pg_get_constraintdef(oid) from pg_constraint
+    where conrelid='public.agrovision_members'::regclass and contype='p'
   ),
-  'records', jsonb_build_object(
-    'count', (select count(*)::bigint from public.agrovision_records),
-    'policies', (
-      select coalesce(jsonb_agg(jsonb_build_object(
-        'name', policyname, 'command', cmd, 'roles', roles,
-        'using', qual, 'with_check', with_check
-      ) order by policyname), '[]'::jsonb)
-      from pg_policies
-      where schemaname='public' and tablename='agrovision_records'
-    ),
-    'triggers', (
-      select coalesce(jsonb_agg(jsonb_build_object(
-        'name', trigger_name, 'action', action_statement
-      ) order by trigger_name), '[]'::jsonb)
-      from information_schema.triggers
-      where event_object_schema='public' and event_object_table='agrovision_records'
-    )
+  'members_unique_project_user', exists (
+    select 1 from pg_index i
+    join pg_class t on t.oid=i.indrelid
+    join pg_namespace n on n.oid=t.relnamespace
+    join pg_class ix on ix.oid=i.indexrelid
+    where n.nspname='public' and t.relname='agrovision_members'
+      and i.indisunique
+      and position('(project_id, user_id)' in pg_get_indexdef(ix.oid)) > 0
+  ),
+  'record_policies', (
+    select coalesce(jsonb_agg(jsonb_build_object(
+      'name',policyname,'command',cmd,'roles',roles,
+      'using',qual,'with_check',with_check
+    ) order by policyname),'[]'::jsonb)
+    from pg_policies where schemaname='public' and tablename='agrovision_records'
+  ),
+  'members_select_grant', has_table_privilege('authenticated','public.agrovision_members','SELECT'),
+  'batch_rpc_exists', to_regprocedure('public.agrovision_records_apply_batch(text,jsonb,jsonb)') is not null,
+  'member_rpc_exists', to_regprocedure('public.agrovision_is_project_member(text)') is not null,
+  'validate_trigger_exists', exists (
+    select 1 from pg_trigger where tgname='agrovision_validate_record_payload' and not tgisinternal
+  ),
+  'updated_at_trigger_exists', exists (
+    select 1 from pg_trigger where tgname='agrovision_updated_at' and not tgisinternal
   )
-) as preflight_report;
+) as preflight;

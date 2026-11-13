@@ -47,7 +47,6 @@ test("status exposes configuration without revealing secrets", async () => {
 
   assert.equal(result.configured, true);
   assert.equal(result.requiresToken, true);
-  assert.equal(result.localTokenConfigured, true);
   assert.ok(!JSON.stringify(result).includes("secret"));
 });
 
@@ -114,74 +113,6 @@ test("validates cloud JWT against Supabase Auth before calling the AI provider",
     assert.equal(response.status, 200);
     assert.ok(calls.some((url) => url.endsWith("/auth/v1/user")));
   } finally { globalThis.fetch = original; }
-});
-
-
-test("supports explicit local-token mode even when Supabase is configured", async () => {
-  const original = globalThis.fetch;
-  const calls: string[] = [];
-  globalThis.fetch = async (url) => {
-    calls.push(String(url));
-    return Response.json({ choices: [{ finish_reason: "stop", message: { content: JSON.stringify(demoDiagnosis) } }] });
-  };
-  try {
-    const response = await analyzeCore(
-      request({ image }, {
-        authorization: `Bearer ${TEST_LOCAL_TOKEN}`,
-        "x-analysis-mode": "local",
-      }),
-      {
-        OPENAI_API_KEY: "test",
-        ANALYSIS_ACCESS_TOKEN: TEST_LOCAL_TOKEN,
-        SUPABASE_URL: "https://test.supabase.co",
-        SUPABASE_ANON_KEY: "anon-test",
-      },
-    );
-    assert.equal(response.status, 200);
-    assert.equal(calls.some((url) => url.endsWith("/auth/v1/user")), false);
-  } finally { globalThis.fetch = original; }
-});
-
-test("keeps cloud mode on Supabase JWT validation when a local token is also configured", async () => {
-  const original = globalThis.fetch;
-  let providerCalled = false;
-  globalThis.fetch = async (url) => {
-    if (String(url).endsWith("/auth/v1/user")) return Response.json({ message: "invalid token" }, { status: 401 });
-    providerCalled = true;
-    return Response.json({});
-  };
-  try {
-    const response = await analyzeCore(
-      request({ image }, {
-        authorization: "Bearer invalid-cloud-jwt",
-        "x-analysis-mode": "cloud",
-      }),
-      {
-        OPENAI_API_KEY: "test",
-        ANALYSIS_ACCESS_TOKEN: TEST_LOCAL_TOKEN,
-        SUPABASE_URL: "https://test.supabase.co",
-        SUPABASE_ANON_KEY: "anon-test",
-      },
-    );
-    assert.equal(response.status, 401);
-    assert.equal(providerCalled, false);
-  } finally { globalThis.fetch = original; }
-});
-
-test("local mode reports missing server token even when Supabase is configured", async () => {
-  const response = await analyzeCore(
-    request({ image }, {
-      authorization: "Bearer any-token",
-      "x-analysis-mode": "local",
-    }),
-    {
-      OPENAI_API_KEY: "test",
-      SUPABASE_URL: "https://test.supabase.co",
-      SUPABASE_ANON_KEY: "anon-test",
-    },
-  );
-  assert.equal(response.status, 503);
-  assert.equal((await response.json()).code, "AUTH_NOT_CONFIGURED");
 });
 
 test("rejects invalid Supabase JWT without calling the AI provider", async () => {

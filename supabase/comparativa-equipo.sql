@@ -31,37 +31,16 @@ revoke all on function public.agrovision_is_project_member(text) from public, an
 grant execute on function public.agrovision_is_project_member(text) to authenticated;
 
 alter table public.agrovision_records enable row level security;
-drop policy if exists "Users can delete own records" on public.agrovision_records;
-drop policy if exists "Users can insert own records" on public.agrovision_records;
-drop policy if exists "Users can read own records" on public.agrovision_records;
-drop policy if exists "Users can update own records" on public.agrovision_records;
 drop policy if exists agrovision_personal_records on public.agrovision_records;
-drop policy if exists agrovision_records_select on public.agrovision_records;
-drop policy if exists agrovision_records_insert on public.agrovision_records;
-drop policy if exists agrovision_records_update on public.agrovision_records;
-drop policy if exists agrovision_records_delete on public.agrovision_records;
-create policy agrovision_records_select on public.agrovision_records
-for select to authenticated
-using (owner_id = (select auth.uid()) and public.agrovision_is_project_member(project_id));
-create policy agrovision_records_insert on public.agrovision_records
-for insert to authenticated
+create policy agrovision_personal_records on public.agrovision_records
+for all to authenticated
+using (owner_id = (select auth.uid()) and public.agrovision_is_project_member(project_id))
 with check (
   owner_id = (select auth.uid())
   and public.agrovision_is_project_member(project_id)
   and created_by = (select auth.uid())
   and updated_by = (select auth.uid())
 );
-create policy agrovision_records_update on public.agrovision_records
-for update to authenticated
-using (owner_id = (select auth.uid()) and public.agrovision_is_project_member(project_id))
-with check (
-  owner_id = (select auth.uid())
-  and public.agrovision_is_project_member(project_id)
-  and updated_by = (select auth.uid())
-);
-create policy agrovision_records_delete on public.agrovision_records
-for delete to authenticated
-using (owner_id = (select auth.uid()) and public.agrovision_is_project_member(project_id));
 grant select, insert, update, delete on public.agrovision_records to authenticated;
 revoke all on public.agrovision_records from anon;
 
@@ -73,10 +52,7 @@ begin
   from pg_policies
   where schemaname = 'public'
     and tablename = 'agrovision_records'
-    and policyname not in (
-      'agrovision_records_select', 'agrovision_records_insert',
-      'agrovision_records_update', 'agrovision_records_delete'
-    );
+    and policyname <> 'agrovision_personal_records';
   if extra_policies is not null then
     raise exception 'Hay políticas RLS adicionales en agrovision_records (%). Revísalas: PostgreSQL combina políticas permisivas con OR.', extra_policies;
   end if;
@@ -122,33 +98,12 @@ end;
 $$;
 alter table public.agrovision_members alter column project_id set not null;
 alter table public.agrovision_members alter column user_id set not null;
-
--- Esta instalación debe ejecutarse después de hardening-1.2.1.sql.
--- Exigimos PK compuesta real, no solo un índice secundario, para que una
--- cuenta pueda tener membresías independientes en distintos proyectos.
-do $$
-declare
-  v_pk_columns text[];
-begin
-  select array_agg(a.attname::text order by key_column.ordinality)
-    into v_pk_columns
-  from pg_constraint c
-  cross join lateral unnest(c.conkey) with ordinality as key_column(attnum, ordinality)
-  join pg_attribute a
-    on a.attrelid = c.conrelid and a.attnum = key_column.attnum
-  where c.conrelid = 'public.agrovision_members'::regclass
-    and c.contype = 'p'
-  group by c.conname;
-
-  if v_pk_columns is distinct from array['project_id','user_id'] then
-    raise exception 'Ejecuta primero hardening-1.2.1.sql: agrovision_members requiere PK (project_id, user_id).';
-  end if;
-end;
-$$;
+create unique index if not exists agrovision_members_project_user_uidx
+  on public.agrovision_members (project_id, user_id);
 
 -- La pertenencia al proyecto es explícita. No se incorpora a nadie por conocer project_id.
 drop trigger if exists agrovision_comparison_register_member on public.agrovision_records;
--- Se conserva la función trigger histórica por compatibilidad; sin trigger ya no se ejecuta.
+drop function if exists public.agrovision_comparison_register_member();
 
 -- Convierte fechas de JSON sin interrumpir el informe si un registro antiguo
 -- contiene una fecha inválida.

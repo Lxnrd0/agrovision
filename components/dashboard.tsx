@@ -495,7 +495,6 @@ export default function Dashboard({ userEmail, onLogout, localMode = false }: Da
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${bearerToken}`,
-          ...(!cloudMode ? { "X-Analysis-Mode": "local" } : {}),
         },
         body: payload,
         signal: controller.signal,
@@ -905,7 +904,7 @@ export default function Dashboard({ userEmail, onLogout, localMode = false }: Da
                 diagnosis={diagnosis}
                 source={source}
                 busy={busy}
-                requiresToken={localMode || (requiresToken && !cloudMode)}
+                requiresToken={requiresToken && !cloudMode}
                 mode={mode}
                 setMode={setMode}
                 onFile={upload}
