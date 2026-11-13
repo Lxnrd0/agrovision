@@ -27,7 +27,6 @@ begin
 
   insert into public.agrovision_members (project_id, user_id, member_name)
   values ('rabanitos-2026', v_admin_id, 'Administrador')
-  on conflict (project_id, user_id) do update
-    set member_name = excluded.member_name;
+  on conflict (project_id, user_id) do nothing;
 end;
 $$;

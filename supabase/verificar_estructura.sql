@@ -45,3 +45,25 @@ where n.nspname = 'public'
     'agrovision_comparison_published'
   )
 order by p.proname;
+
+
+-- Solo lectura: clave primaria e índices de membresías.
+select
+  c.conname as constraint_name,
+  c.contype as constraint_type,
+  pg_get_constraintdef(c.oid) as definition
+from pg_constraint c
+where c.conrelid = 'public.agrovision_members'::regclass
+order by c.contype, c.conname;
+
+select indexname, indexdef
+from pg_indexes
+where schemaname = 'public' and tablename = 'agrovision_members'
+order by indexname;
+
+-- Solo lectura: triggers activos en observaciones.
+select trigger_name, action_timing, event_manipulation, action_statement
+from information_schema.triggers
+where event_object_schema = 'public'
+  and event_object_table = 'agrovision_records'
+order by trigger_name, event_manipulation;

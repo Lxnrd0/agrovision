@@ -6,7 +6,7 @@ Fortalecer la seguridad del análisis IA, la integridad de la base de datos, la 
 
 ## Correcciones incluidas
 
-1. **Autenticación:** Supabase JWT validado en servidor; token local obligatorio de 32 caracteres como mínimo cuando no hay Supabase.
+1. **Autenticación:** Supabase JWT validado en servidor; token local obligatorio de 32 caracteres como mínimo y modo local explícito incluso cuando Supabase está configurado.
 2. **Protección API:** comparación de token en tiempo constante, límite de solicitudes y soporte Upstash opcional.
 3. **Seguridad HTTP:** Content Security Policy y cabeceras de seguridad en Next.js.
 4. **Supabase:** membresías explícitas por proyecto/usuario, RLS que bloquea cuentas no inscritas, trigger de validación y RPC transaccional para mutaciones.
@@ -18,6 +18,7 @@ Fortalecer la seguridad del análisis IA, la integridad de la base de datos, la 
 ## Archivos principales modificados
 
 - `lib/analysis-server.ts`
+- `components/dashboard.tsx`
 - `app/api/analyze-crop/route.ts`
 - `lib/cloud.ts`
 - `components/history.tsx`
@@ -26,13 +27,23 @@ Fortalecer la seguridad del análisis IA, la integridad de la base de datos, la 
 - `supabase/personal-account.sql`
 - `supabase/comparativa-equipo.sql`
 - `supabase/hardening-1.2.1.sql`
+- `supabase/preflight-hardening-1.2.1.sql`
 - `tests/analysis.test.ts`
 - `tests/cloud.test.ts`
+- `tests/sql-migration.test.ts`
 - `README.md`, `QA_FINAL.md`, `QA_STATUS.md` y `package.json`
+
+## Correcciones de compatibilidad añadidas
+
+- Se corrigió `hardening-1.2.1.sql` para las cuatro políticas RLS legacy identificadas en el Supabase actual.
+- Se incorpora migración de PK `user_id` a `(project_id, user_id)` con verificación previa de claves foráneas dependientes y duplicados.
+- Se evita duplicar el trigger de `updated_at`.
+- El script de alta de integrantes deja intactas las membresías que ya existen.
+- Se añade `supabase/preflight-hardening-1.2.1.sql` y pruebas estáticas del SQL.
 
 ## Observaciones y límites
 
-- La migración SQL no se ejecutó en la base de datos del propietario. El administrador y cada integrante deben registrarse explícitamente mediante `activar-admin-comparativa.sql` y `registrar-integrante.sql`.
+- La migración SQL corregida no se ejecutó en la base de datos del propietario. Las membresías son explícitas. En la base actual las dos cuentas ya están registradas; no se deben volver a ejecutar scripts de alta para ellas. Los scripts solo se usan si falta una cuenta autorizada.
 - El despliegue de Vercel no se modificó.
 - No se usaron ni se incluyeron credenciales reales.
 - Las pruebas automatizadas y el build completo quedan pendientes de ejecutar con Node 24 porque la instalación de dependencias no terminó en el entorno de preparación.

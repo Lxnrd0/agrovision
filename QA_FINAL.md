@@ -3,6 +3,7 @@
 ## Cambios incluidos
 
 - JWT de Supabase validado en servidor para el endpoint IA.
+- Modo local explícito compatible con Supabase configurado mediante `X-Analysis-Mode: local` y `ANALYSIS_ACCESS_TOKEN`.
 - Token local obligatorio de al menos 32 caracteres cuando Supabase no está configurado.
 - Rate limit por identidad, con integración opcional Upstash Redis y fallback por instancia.
 - Cabeceras HTTP de seguridad y Content Security Policy.
@@ -13,14 +14,25 @@
 - Caché de URLs firmadas por usuario y límite de concurrencia.
 - Bitácora móvil compacta y uniforme con escritorio; detalle completo en vista expandida.
 
+## Correcciones de compatibilidad posteriores a la revisión de Supabase
+
+- La migración sustituye las cuatro políticas RLS legacy conocidas y aborta si quedan políticas no reconocidas.
+- La clave primaria de membresías se migra a `(project_id, user_id)` únicamente si no hay claves foráneas dependientes.
+- Se elimina el riesgo de trigger duplicado para `updated_at`.
+- Se conserva la función trigger de auto-registro histórica, pero se desactiva el trigger; las membresías pasan a ser explícitas.
+- El alta manual de integrante no sobrescribe datos si la membresía ya existe.
+- Se añadió una consulta preflight de solo lectura, una prueba para el modo local con Supabase configurado y pruebas estáticas del SQL.
+
 ## Verificaciones realizadas
 
 | Verificación | Resultado |
 |---|---|
-| Parser TypeScript/TSX | 33 archivos procesados; 0 errores sintácticos |
+| Parser TypeScript/TSX | 35 archivos procesados; 0 errores sintácticos |
 | `node --check` | Correcto en `next.config.mjs`, `scripts/build-site.mjs` y `public/sw.js` |
 | JSON | `package.json`, `package-lock.json`, `tsconfig.json` y `vercel.json` parseables |
 | Revisión de referencias | Revisados archivos modificados y rutas principales |
+| Pruebas estáticas de migración SQL | 6/6 correctas ejecutadas con Node test runner sobre el archivo de prueba convertido temporalmente a `.mjs` |
+| Revisión de compatibilidad SQL | Corregida estáticamente; falta ejecutar en Supabase de pruebas |
 
 ## Verificaciones no completadas
 

@@ -5,10 +5,12 @@ Fecha de preparación: 12/11/2026.
 | Comprobación | Estado | Observación |
 |---|---|---|
 | Revisión estática del código fuente | Realizada | Autenticación, sincronización, SQL, métricas y bitácora revisados. |
-| Parser TypeScript/TSX | Correcto | 33 archivos procesados; 0 errores sintácticos. |
+| Parser TypeScript/TSX | Correcto | 35 archivos procesados; 0 errores sintácticos. |
 | `node --check` | Correcto | `next.config.mjs`, `scripts/build-site.mjs` y `public/sw.js`. |
 | Parseo JSON | Correcto | package, lockfile, tsconfig y Vercel. |
 | Pruebas de autenticación y caché | Añadidas | Incluidas en los tests; ejecución pendiente. |
+| Compatibilidad de migración Supabase | Corregida estáticamente | Reemplaza políticas legacy conocidas y migra PK con comprobación de dependencias. |
+| Preflight SQL | Añadido | Solo lectura; revisa membresías, PK, políticas y triggers. |
 | `npm ci --include=dev` | No completado | Agotó el tiempo disponible en este entorno. |
 | `npm test` | No completado | Falta `tsx` porque no se completó la instalación. |
 | Typecheck completo | No completado | Faltan dependencias y tipos instalados. |
