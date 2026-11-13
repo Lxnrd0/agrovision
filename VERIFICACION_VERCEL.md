@@ -1,49 +1,43 @@
-# AgroVision 1.1.1 — comprobaciones del paquete para Vercel
+# Verificación de Vercel — AgroVisión / TerraNova 1.2.1
 
-Fecha: 28/10/2026. Este documento actualiza el informe de auditoría anterior.
+## Estado
 
-## Resultado comprobado
+**No se realizó ningún despliegue desde esta preparación.** El proyecto Vercel del propietario no fue modificado y no se utilizaron credenciales de producción.
 
-- Copia nueva del proyecto sin node_modules, .next ni .env.local antes de instalar.
-- `npm ci --include=dev --no-audit --no-fund`: correcto. npm usa el lockfile incluido.
-- `npm run typecheck` (`next typegen && tsc --noEmit`): correcto.
-- 145 importaciones internas con nombre comprobadas con la API del compilador TypeScript: ninguna exportación ausente.
-- `npm test`: 43 pruebas aprobadas, cero fallidas y cero omitidas.
-- `npm run build`: correcto en modo local y con configuración pública de nube de prueba.
-- Build adicional con VERCEL=1 y VERCEL_ENV=production establecidos localmente: correcto (no equivale a desplegar en la cuenta Vercel).
-- El build de prueba de nube usó https://example.invalid y un marcador público únicamente para activar la rama de configuración. No son credenciales utilizables, no se incluyen como valores recomendados y no se hicieron llamadas a Supabase.
-- HTTP de producción local: página 200; ocho recursos iniciales JS/CSS 200; recursos públicos y service worker 200; GET de API sin motor 200; POST sin motor 503 explícito y sin datos simulados.
-- HTTP de producción con build de nube: página 200 y pantalla inicial de cuenta renderizada; sin peticiones reales de autenticación.
-- `npm audit`: cero vulnerabilidades conocidas reportadas.
-- Los tres SQL se analizaron con el parser PostgreSQL pglast; SQL y cuerpos PL/pgSQL válidos sintácticamente. No se ejecutaron sobre una base de datos real.
-- Entorno comprobado: Linux, Node 24.22.1 y npm 11.9.0. Node fijado a 24.x; versiones directas exactas y lockfile coherente.
+## Variables que deben configurarse en Vercel
 
-## Ajustes específicos de esta entrega
+| Variable | Uso |
+|---|---|
+| `GEMINI_API_KEY` o `OPENAI_API_KEY` | Proveedor de análisis IA |
+| `GEMINI_MODEL` / `OPENAI_MODEL` | Modelo seleccionado |
+| `NEXT_PUBLIC_SUPABASE_URL` | URL pública del proyecto Supabase |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Clave pública anon/publishable |
+| `NEXT_PUBLIC_AGROVISION_PROJECT_ID` | Identificador del proyecto |
+| `ANALYSIS_ACCESS_TOKEN` | Solo para modo local sin Supabase; secreto aleatorio de 32+ caracteres |
+| `UPSTASH_REDIS_REST_URL` | Recomendado para rate limit distribuido |
+| `UPSTASH_REDIS_REST_TOKEN` | Secreto de Upstash, nunca público |
 
-1. vercel.json fija framework Next.js, instalación `npm ci --include=dev` y build `npm run build`. La generación normal de Next usa su directorio de salida automático. No usar build:site ni output export para el despliegue Vercel.
-2. El archivo lib/storage.ts incluye una sola definición de initialiseRecords, además de mergeRecords y restoreRecords. Se debe reemplazar entero: no conservar la función añadida manualmente al final.
-3. Todos los imports de dashboard, auth-gate, backup-controls y los demás componentes coinciden con los exports y tipos de los módulos entregados.
-4. lib/limits.ts unifica el máximo de imagen (4.000.000 caracteres de data URL) y JSON (4.200.000 bytes), inferiores al límite de 4,5 MB de funciones Vercel. El cliente comprueba el JSON y reduce calidad JPEG antes del envío; el servidor valida los mismos límites.
-5. El comando typecheck genera primero los tipos de Next, para no depender de restos de un build anterior.
-6. La paginación de Supabase ya admite una página de servidor menor que 500 filas. Se continúa con la cantidad realmente recibida y se detectan IDs repetidos para evitar un bucle si la lectura cambia.
-7. Los tiempos de espera de fetch de nube utilizan AbortController sin depender del soporte de AbortSignal.timeout del navegador.
-8. Se incluye una migración aditiva para la base existente: no cambia RLS ni buckets, no borra registros o usuarios y comprueba la estructura antes de cambiar updated_at.
-9. GitHub Actions se alinea con Node 24, la versión configurada para Vercel.
+No configures `service_role` ni claves privadas con prefijo `NEXT_PUBLIC_`.
 
-## Alcance de la revisión
+## Procedimiento de Preview
 
-Se revisaron los módulos completos que participan en la compilación y las rutas funcionales previamente auditadas. Parser, tipos e importaciones comprueban estáticamente todos los archivos incluidos por tsconfig. Las pruebas cubren las regresiones documentadas, no cada interacción posible ni cada valor que un usuario pueda introducir.
+1. Ejecutar las migraciones SQL en Supabase de pruebas siguiendo `docs/GUIA_MIGRACION_SUPABASE_1.2.1.md`.
+2. Registrar explícitamente al administrador y a cada integrante autorizado.
+3. Crear una rama `hardening/agrovision-1.2.1` y subir el repositorio.
+4. Configurar variables de Preview en Vercel.
+5. Confirmar Node.js 24.x.
+6. Ejecutar `npm ci` y `npm run verify`.
+7. Revisar logs del endpoint de IA sin exponer tokens.
+8. Probar login, logout, recuperación, análisis IA, bitácora, edición, eliminación, fotos, respaldo, comparación y publicación.
+9. Probar con cuenta no inscrita: no debe poder leer ni escribir en el proyecto.
+10. Probar con dos cuentas autorizadas: el administrador ve vista previa y publica; el integrante solo ve la última publicación agregada.
+11. Revisar bitácora en 360, 390, 430, 768 y 1366 px.
+12. Solo después de aprobar, integrar a `main` y promover a producción.
 
-Este paquete compila sin errores en el entorno indicado. No se ha desplegado desde esta sesión en la cuenta Vercel del usuario, y no se ha leído el estado actual de su repositorio. No puede garantizarse el despliegue si se mezclan archivos antiguos, cambia el directorio raíz o se usa una configuración externa diferente.
+## Criterio de rollback
 
-No hay prueba visual de escritorio/móvil: Chromium no estuvo disponible en esta sesión. No hay llamadas reales a Gemini/OpenAI ni Supabase. La verificación de modelos, cuota, acceso de usuarios, RLS, correo y bucket exige los servicios configurados por el usuario.
+Si falla el Preview, no integrar a `main`. Si falla producción después de una liberación, revertir el commit y conservar el respaldo SQL/Storage anterior. No ejecutar `DROP` ni borrar datos como mecanismo de rollback automático.
 
-Persisten los límites de la auditoría original: restauraciones múltiples en nube no son una transacción única; altas simultáneas con distintos IDs para la misma planta/fecha necesitan una restricción de servidor; la API de IA tiene un token opcional separado del login; el modo nube no tiene cola offline; la precisión agronómica no está validada. No se sustituyó ninguna integración real con simulaciones.
+## Verificación en esta preparación
 
-## Fuentes oficiales consultadas para la configuración
-
-- Vercel: Node 24.x: https://vercel.com/docs/functions/runtimes/node-js/node-js-versions
-- Vercel: build y directorio raíz: https://vercel.com/docs/builds/configure-a-build
-- Vercel: máximo de cuerpo de función: https://vercel.com/docs/errors/function_payload_too_large
-- Next: variables públicas fijadas durante el build: https://nextjs.org/docs/pages/guides/environment-variables
-- GitHub: editor de varios archivos: https://docs.github.com/en/codespaces/the-githubdev-web-based-editor
+Se validó sintaxis de 33 archivos TypeScript/TSX, `node --check` de los archivos JS/MJS y parseo de JSON. No se completó `npm ci` por timeout, por lo que `npm test`, typecheck y build quedan pendientes de Node 24 con dependencias instaladas.

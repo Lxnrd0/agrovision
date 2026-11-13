@@ -25,15 +25,15 @@ begin
   if exists (
     select 1 from information_schema.columns
     where table_schema = 'public' and table_name = 'agrovision_records'
-      and column_name = 'updated_at' and data_type <> 'timestamp with time zone'
+      and column_name in ('created_at','updated_at') and data_type <> 'timestamp with time zone'
   ) then
-    raise exception 'updated_at debe ser timestamptz. No se modificó el tipo ni se borraron datos.';
+    raise exception 'created_at y updated_at deben ser timestamptz. No se modificó el tipo ni se borraron datos.';
   end if;
 end;
 $$;
 
 alter table public.agrovision_records
-  add column if not exists updated_at timestamptz not null default clock_timestamp();
+  add column if not exists updated_at timestamptz;
 
 update public.agrovision_records
 set updated_at = clock_timestamp()
@@ -43,6 +43,18 @@ alter table public.agrovision_records
   alter column updated_at set default clock_timestamp();
 alter table public.agrovision_records
   alter column updated_at set not null;
+
+alter table public.agrovision_records
+  add column if not exists created_at timestamptz;
+
+update public.agrovision_records
+set created_at = coalesce(created_at, updated_at, clock_timestamp())
+where created_at is null;
+
+alter table public.agrovision_records
+  alter column created_at set default now();
+alter table public.agrovision_records
+  alter column created_at set not null;
 
 create or replace function public.agrovision_touch_updated_at()
 returns trigger language plpgsql set search_path = public as $$

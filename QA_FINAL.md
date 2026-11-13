@@ -1,34 +1,41 @@
-# QA final — TerraNova 1.2.0
+# QA final — AgroVisión / TerraNova 1.2.1
 
-## Comprobaciones completadas en el entorno de preparación
-- 33 archivos TypeScript/TSX procesados por el parser de TypeScript: 0 errores sintácticos.
-- `node --check` correcto para `next.config.mjs`, `scripts/build-site.mjs` y `public/sw.js`.
-- JSON de `package.json` y `package-lock.json` parseable.
-- `lib/types.ts`, `lib/tracking.ts` y `lib/metrics.ts` compilados aisladamente con TypeScript global.
-- Prueba aislada de métricas con 20 observaciones sintéticas: 4 plantas, 2 tratamientos, promedios de altura/diámetro/hojas y conteos coherentes.
+## Cambios incluidos
 
-## Comprobaciones no ejecutadas
-- `npm ci` agotó el tiempo al descargar dependencias; el entorno tiene Node 22.16.0, pero el proyecto exige Node 24.x.
-- No se ejecutó `npm run verify` ni se afirma que la suite o el build completo hayan pasado.
-- No se ejecutó SQL contra la instancia Supabase del propietario.
-- No se verificaron sesiones, políticas RLS, almacenamiento de fotos, publicación RPC ni acceso real con dos cuentas.
-- No se hizo prueba visual/E2E en navegador.
+- JWT de Supabase validado en servidor para el endpoint IA.
+- Token local obligatorio de al menos 32 caracteres cuando Supabase no está configurado.
+- Rate limit por identidad, con integración opcional Upstash Redis y fallback por instancia.
+- Cabeceras HTTP de seguridad y Content Security Policy.
+- Membresías explícitas por proyecto/usuario y RLS que bloquea cuentas no inscritas.
+- Validaciones SQL de medidas, fechas, duplicados por planta/fecha y consistencia de tratamiento.
+- RPC transaccional para altas, ediciones y eliminaciones con control de concurrencia.
+- Cálculo de crecimiento restringido al mismo tratamiento.
+- Caché de URLs firmadas por usuario y límite de concurrencia.
+- Bitácora móvil compacta y uniforme con escritorio; detalle completo en vista expandida.
 
-## Verificación obligatoria en el equipo del propietario
+## Verificaciones realizadas
 
-Con Node 24.x y acceso al registro npm:
+| Verificación | Resultado |
+|---|---|
+| Parser TypeScript/TSX | 33 archivos procesados; 0 errores sintácticos |
+| `node --check` | Correcto en `next.config.mjs`, `scripts/build-site.mjs` y `public/sw.js` |
+| JSON | `package.json`, `package-lock.json`, `tsconfig.json` y `vercel.json` parseables |
+| Revisión de referencias | Revisados archivos modificados y rutas principales |
 
-```powershell
+## Verificaciones no completadas
+
+El entorno de preparación dispone de Node.js 22.16.0, mientras que el repositorio requiere Node 24.x. `npm ci --include=dev` agotó el tiempo disponible y no instaló las dependencias.
+
+Se intentó `npm test`, pero no pudo iniciar porque falta el paquete `tsx` (`ERR_MODULE_NOT_FOUND`). El `tsc --noEmit` global tampoco pudo completarse por falta de tipos instalados (`@types/node`, `@types/react`, etc.). No se ejecutó `npm run build`.
+
+Tampoco se ejecutó SQL en la instancia Supabase real del propietario, no se probaron credenciales reales de Supabase/IA y no se realizó prueba visual/E2E en navegador.
+
+## Comando obligatorio antes de integrar
+
+```bash
+node --version
 npm ci
 npm run verify
-npm run dev
 ```
 
-Luego:
-1. Entrar con la cuenta administradora y comprobar el Resumen general.
-2. Confirmar que se muestra la tabla de tratamientos y los tamaños de muestra `n`.
-3. Pulsar «Publicar al equipo» y confirmar la publicación.
-4. Entrar con una cuenta integrante del mismo proyecto y comprobar que solo ve la publicación agregada.
-5. Confirmar que la cuenta integrante no puede acceder a la vista previa administrativa ni publicar.
-
-No integrar en `main` ni desplegar si `npm run verify` falla. No copiar claves privadas al repositorio.
+El comando debe ejecutarse con Node 24.x. Después, aplicar las migraciones en Supabase de pruebas y validar dos cuentas, Storage, comparación, publicación y bitácora móvil. No integrar a `main` ni desplegar si alguna verificación falla.
