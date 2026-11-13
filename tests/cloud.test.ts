@@ -118,7 +118,8 @@ test("cloud reads all rows when the server caps pages below the requested size",
 
 test("mobile photo upload decodes data URLs locally and uses a stable Supabase Storage path", async () => {
   const photo = { ...fixture, id: "photo-record-1", image: "data:image/jpeg;base64,/9j/2Q==" };
-  let uploadedBlob: Blob | null = null;
+  const uploadedBlobTypes: string[] = [];
+  const uploadedBlobSizes: number[] = [];
   let storagePath = "";
   let restReads = 0;
   globalThis.fetch = async (input, init) => {
@@ -130,7 +131,10 @@ test("mobile photo upload decodes data URLs locally and uses a stable Supabase S
     }
     if (url.pathname.includes("/storage/v1/object/agrovision-photos/")) {
       storagePath = url.pathname;
-      uploadedBlob = init?.body as Blob;
+      if (init?.body instanceof Blob) {
+        uploadedBlobTypes.push(init.body.type);
+        uploadedBlobSizes.push(init.body.size);
+      }
       return Response.json({ Key: "uploaded" });
     }
     if (url.pathname.endsWith("/rpc/agrovision_records_apply_batch")) {
@@ -144,8 +148,8 @@ test("mobile photo upload decodes data URLs locally and uses a stable Supabase S
   const saved = await cloud.mutateCloudRecords(() => [photo]);
   assert.equal(saved[0].id, photo.id);
   assert.equal(saved[0].image, photo.image, "keep the local preview visible after a successful save");
-  assert.ok(uploadedBlob instanceof Blob);
-  assert.equal(uploadedBlob?.type, "image/jpeg");
+  assert.deepEqual(uploadedBlobTypes, ["image/jpeg"]);
+  assert.ok(uploadedBlobSizes[0] > 0, "the uploaded image must contain bytes");
   assert.match(storagePath, /photo-record-1\.jpg$/);
   assert.equal(restReads, 1, "do not issue a second read after the write has committed");
 });
