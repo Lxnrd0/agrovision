@@ -761,18 +761,22 @@ export default function Comparison({
                         <summary style={{ cursor: "pointer" }}>
                           Ver fotografía
                         </summary>
-                        <img
-                          src={record.image}
-                          alt={`Rabanito ${record.plantId}, ${record.date}`}
-                          loading="lazy"
-                          style={{
-                            display: "block",
-                            width: 200,
-                            maxWidth: "100%",
-                            marginTop: 8,
-                            borderRadius: 8,
-                          }}
-                        />
+                        {record.image.startsWith("supabase-storage://") ? (
+                          <small>La fotografía está guardada en Supabase, pero su enlace temporal no está disponible ahora. Actualiza para reintentar.</small>
+                        ) : (
+                          <img
+                            src={record.image}
+                            alt={`Rabanito ${record.plantId}, ${record.date}`}
+                            loading="lazy"
+                            style={{
+                              display: "block",
+                              width: 200,
+                              maxWidth: "100%",
+                              marginTop: 8,
+                              borderRadius: 8,
+                            }}
+                          />
+                        )}
                       </details>
                     )}
                   </td>

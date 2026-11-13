@@ -1,4 +1,4 @@
-const CACHE = "agrovision-v5";
+const CACHE = "agrovision-v6";
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches

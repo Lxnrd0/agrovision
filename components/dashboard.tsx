@@ -957,7 +957,7 @@ export default function Dashboard({ userEmail, onLogout, localMode = false }: Da
                     key={record.id}
                     onClick={() => setView("history")}
                   >
-                    {record.image ? (
+                    {record.image && !record.image.startsWith("supabase-storage://") ? (
                       <img src={record.image} alt="" />
                     ) : (
                       <div className="recent-placeholder">

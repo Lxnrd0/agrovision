@@ -200,13 +200,23 @@ export default function History({
 
             return (
               <article key={record.id} className="record-card">
-                <div className="record-image">
-                  {record.image ? (
+                <div
+                  className="record-image"
+                  style={{ height: 175, minHeight: 175, maxHeight: 175, overflow: "hidden" }}
+                >
+                  {record.image && !record.image.startsWith("supabase-storage://") ? (
                     <img
                       src={record.image}
                       loading="lazy"
+                      decoding="async"
                       alt={`${record.crop || "Cultivo"} ${record.plantId || "sin identificar"} en ${record.zone || "sin lote"}`}
+                      style={{ position: "absolute", inset: 0, display: "block", width: "100%", height: "100%", objectFit: "cover", objectPosition: "center" }}
                     />
+                  ) : record.image.startsWith("supabase-storage://") ? (
+                    <div className="record-image-placeholder" title="La fotografía sigue guardada en Supabase; se volverá a intentar cargar.">
+                      <Leaf size={38} />
+                      <span>Fotografía guardada</span>
+                    </div>
                   ) : (
                     <Leaf size={52} />
                   )}
@@ -326,14 +336,16 @@ export default function History({
             {dateLabel(details.date)} · {details.collaborator}
           </p>
 
-          {details.image && (
+          {details.image && !details.image.startsWith("supabase-storage://") ? (
             <img
               className="detail-image"
               src={details.image}
               alt={`Fotografía de ${details.crop || "cultivo"} ${details.plantId || "sin identificar"}`}
               style={{ objectFit: "contain" }}
             />
-          )}
+          ) : details.image.startsWith("supabase-storage://") ? (
+            <p className="photo-retry-note">La fotografía sigue guardada en Supabase. No se pudo generar su enlace temporal; se volverá a intentar al actualizar la bitácora.</p>
+          ) : null}
 
           <div
             className="detail-tags"

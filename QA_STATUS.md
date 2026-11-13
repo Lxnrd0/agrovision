@@ -13,3 +13,15 @@
 - Verificación de Preview tras el nuevo commit.
 
 No declarar la versión lista para producción hasta completar todos los puntos pendientes.
+
+
+## Hotfix de guardado móvil y bitácora
+
+- Decodificación local de fotografías `data:` antes de subir a Supabase Storage.
+- Sin lectura remota adicional después de que la RPC confirma el guardado.
+- ID de observación y ruta de fotografía estables durante reintentos.
+- Fallo al firmar una fotografía aislado para no bloquear toda la bitácora.
+- Marco de fotografía móvil con altura controlada y caché del service worker renovada.
+- Pruebas estáticas: 9 aprobadas.
+- Pendiente: `npm ci`, typecheck, suite completa y build con Node 24 en GitHub Actions.
+- No se ejecutaron ni modificaron migraciones de Supabase.

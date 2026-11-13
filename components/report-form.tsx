@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import type { CSSProperties, FormEvent } from "react";
 import type {
   Diagnosis,
@@ -66,6 +66,9 @@ export default function ReportForm({
   notify,
 }: ReportFormProps) {
   const [today] = useState(localDate);
+  // Reuse the same id if a mobile connection drops after Supabase commits.
+  // A retry then updates the same observation instead of creating a duplicate.
+  const submissionId = useRef<string | null>(null);
   const [photo, setPhoto] = useState(image);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState("");
@@ -276,7 +279,7 @@ export default function ReportForm({
       }
 
       const record: FieldRecord = {
-        id: crypto.randomUUID(),
+        id: submissionId.current ?? (submissionId.current = crypto.randomUUID()),
         createdAt: new Date().toISOString(),
 
         plantId: plantId.trim(),

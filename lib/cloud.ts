@@ -30,15 +30,47 @@ const PRIVATE_IMAGE_PREFIX = "supabase-storage://agrovision-photos/";
 const SIGNED_URL_CACHE_TTL_MS = 50 * 60 * 1000;
 const signedImageCache = new Map<string, { url: string; expiresAt: number }>();
 
-async function cloudFetch(input: RequestInfo | URL, init: RequestInit = {}) {
-  if (init.signal) return fetch(input, init);
+async function cloudFetch(
+  input: RequestInfo | URL,
+  init: RequestInit = {},
+  operation = "conectar con Supabase",
+  timeoutMs = 30_000,
+) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 30_000);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    return await fetch(input, { ...init, signal: controller.signal });
+    return await fetch(input, { ...init, signal: init.signal || controller.signal });
+  } catch (reason) {
+    const error = reason instanceof Error ? reason : new Error(String(reason));
+    if (error.name === "AbortError") {
+      throw new Error(`Se agotó el tiempo al ${operation}. Comprueba tu conexión e inténtalo nuevamente.`);
+    }
+    // Safari/iOS reports network and CORS failures as the unhelpful "Load failed".
+    // Keep the operation explicit so the user can distinguish Storage from REST.
+    throw new Error(`No se pudo ${operation}. Comprueba la conexión a internet y la configuración de Supabase en Vercel. (${error.message || "fallo de red"})`);
   } finally {
     clearTimeout(timeout);
   }
+}
+
+function imageDataUrlToBlob(dataUrl: string): Blob {
+  const match = /^data:(image\/(?:jpeg|png|webp));base64,([a-z0-9+/=\s]+)$/i.exec(dataUrl);
+  if (!match) {
+    throw new Error("La fotografía no tiene un formato válido. Vuelve a adjuntarla en JPG, PNG o WEBP.");
+  }
+  let binary: string;
+  try {
+    binary = atob(match[2].replace(/\s/g, ""));
+  } catch {
+    throw new Error("No se pudo decodificar la fotografía. Vuelve a adjuntarla.");
+  }
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  const buffer = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(buffer).set(bytes);
+  return new Blob([buffer], { type: match[1].toLowerCase() });
 }
 
 export function sessionIdentityChanged(oldValue: string | null, newValue: string | null): boolean {
@@ -274,6 +306,9 @@ async function activeSession() {
 
 async function cloudRest<T>(path: string, init: RequestInit = {}): Promise<T> {
   const session = await activeSession();
+  const operation = path.startsWith("rpc/")
+    ? "guardar o sincronizar la observación con Supabase"
+    : "consultar la bitácora en Supabase";
   const response = await cloudFetch(`${SUPABASE_URL}/rest/v1/${path}`, {
     ...init,
     headers: {
@@ -281,7 +316,7 @@ async function cloudRest<T>(path: string, init: RequestInit = {}): Promise<T> {
       ...(init.headers || {}),
     },
     cache: "no-store",
-  });
+  }, operation);
   const data = await responseJson(response);
   if (!response.ok) throw new Error(parseErrorMessage(data, `Error de la base de datos (${response.status}).`));
   return data as T;
@@ -441,7 +476,7 @@ async function signedImageUrl(marker: string, accessToken: string, userId: strin
     },
     body: JSON.stringify({ expiresIn: 3600 }),
     cache: "no-store",
-  });
+  }, "obtener el acceso privado a una fotografía");
   const data = await responseJson(response) as { signedURL?: string; message?: string } | null;
   if (!response.ok || !data?.signedURL) {
     throw new Error(parseErrorMessage(data, "No se pudo obtener acceso a una fotografía de tu bitácora."));
@@ -461,7 +496,13 @@ async function signedImageUrl(marker: string, accessToken: string, userId: strin
 
 async function withSignedImage(record: FieldRecord, accessToken: string, userId: string): Promise<FieldRecord> {
   if (!record.image?.startsWith(PRIVATE_IMAGE_PREFIX)) return record;
-  return { ...record, image: await signedImageUrl(record.image, accessToken, userId) };
+  try {
+    return { ...record, image: await signedImageUrl(record.image, accessToken, userId) };
+  } catch {
+    // A temporary Storage/signing outage must not make the entire field log
+    // unavailable. Keep the private object reference so a later poll can retry.
+    return record;
+  }
 }
 
 async function mapWithConcurrency<T, R>(items: T[], concurrency: number, mapper: (item: T) => Promise<R>): Promise<R[]> {
@@ -504,14 +545,19 @@ async function uploadImageIfNeeded(record: FieldRecord): Promise<FieldRecord> {
     throw new Error("Una fotografía tiene un formato que no se puede sincronizar. Vuelve a adjuntarla.");
   }
 
-  const imageResponse = await cloudFetch(record.image);
-  if (!imageResponse.ok) throw new Error("No se pudo preparar una fotografía para subirla a la nube.");
-  const blob = await imageResponse.blob();
+  // Do not fetch(data:...) here: Safari on iOS can reject it as "Load failed".
+  // Decode the already-compressed data URL locally and send the Blob directly.
+  const blob = imageDataUrlToBlob(record.image);
+  if (blob.size > 12 * 1024 * 1024) {
+    throw new Error("La fotografía supera el límite de 12 MB permitido por el almacenamiento.");
+  }
   const extension = blob.type === "image/png" ? "png" : blob.type === "image/webp" ? "webp" : "jpg";
   const mimeType = extension === "jpg" ? "image/jpeg" : blob.type;
-  const unique = typeof crypto.randomUUID === "function" ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const session = await activeSession();
-  const path = `${session.user.id}/${record.id}-${unique}.${extension}`;
+  // Stable object path makes retries idempotent and avoids orphaning a new file
+  // each time the user retries a save after a mobile network interruption.
+  const safeRecordId = record.id.replace(/[^a-zA-Z0-9_-]/g, "_");
+  const path = `${session.user.id}/${safeRecordId}.${extension}`;
   const response = await cloudFetch(`${SUPABASE_URL}/storage/v1/object/agrovision-photos/${encodePath(path)}`, {
     method: "POST",
     headers: {
@@ -522,7 +568,7 @@ async function uploadImageIfNeeded(record: FieldRecord): Promise<FieldRecord> {
     },
     body: blob,
     cache: "no-store",
-  });
+  }, "subir la fotografía a Supabase Storage", 60_000);
   const data = await responseJson(response);
   if (!response.ok) throw new Error(parseErrorMessage(data, "No se pudo guardar la fotografía en la nube."));
   return { ...record, image: `${PRIVATE_IMAGE_PREFIX}${path}` };
@@ -550,7 +596,10 @@ export async function mutateCloudRecords(update: (records: FieldRecord[]) => Fie
   const rows = await getCloudRows();
   const previous = sorted(rows.map((row) => row.payload));
   const previousById = new Map(rows.map((row) => [row.id, row]));
-  const input = update(previous).map((record) => preserveExistingPrivateImage(record, previousById.get(record.id)?.payload));
+  // Keep the display records separate from their private Storage markers.
+  // The display copy keeps the current signed URL/data URL for the live UI.
+  const displayRecords = update(previous);
+  const input = displayRecords.map((record) => preserveExistingPrivateImage(record, previousById.get(record.id)?.payload));
   const uniqueIds = new Set<string>();
   for (const record of input) {
     if (uniqueIds.has(record.id)) throw new Error("Hay identificadores repetidos.");
@@ -602,7 +651,11 @@ export async function mutateCloudRecords(update: (records: FieldRecord[]) => Fie
       throw reason;
     }
   }
-  return readCloudRecords();
+  // The RPC response is the commit boundary. A follow-up SELECT/sign-URL request
+  // must not turn a successful write into a visible "Load failed" (and invite a
+  // duplicate retry) when mobile Safari briefly loses the network afterwards.
+  // The normal cloud poll refreshes signed URLs and concurrent changes shortly.
+  return sorted(displayRecords);
 }
 
 /** Importa en la cuenta iniciada solo las observaciones reales de este navegador. */
