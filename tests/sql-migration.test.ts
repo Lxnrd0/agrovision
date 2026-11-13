@@ -8,6 +8,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const hardening = readFileSync(resolve(root, "supabase/hardening-1.2.1.sql"), "utf8");
 const registerMember = readFileSync(resolve(root, "supabase/registrar-integrante.sql"), "utf8");
 const comparison = readFileSync(resolve(root, "supabase/comparativa-equipo.sql"), "utf8");
+const recordOwnerCount = readFileSync(resolve(root, "supabase/actualizar-integrantes-con-registros.sql"), "utf8");
 
 test("hardening migration is transactional and preserves data rows", () => {
   assert.match(hardening, /^\s*begin;/im);
@@ -61,4 +62,35 @@ test("comparison migration removes the historical auto-registration trigger and 
     /create unique index if not exists agrovision_members_project_user_uidx\s+on public\.agrovision_members\s*\(project_id,\s*user_id\)/i,
   );
   assert.match(comparison, /drop function if exists public\.agrovision_comparison_register_member/);
+});
+
+test("comparison member summaries count distinct record owners in the active project", () => {
+  assert.equal(
+    (comparison.match(/count\(distinct r\.owner_id\)::integer\s+from public\.agrovision_records r\s+where r\.project_id = p_project_id/gi) ?? []).length,
+    3,
+  );
+  assert.match(comparison, /jsonb_set\(\s*p\.payload,\s*'\{summary,members\}'/i);
+  assert.doesNotMatch(
+    comparison,
+    /\(select count\(\*\)::integer from public\.agrovision_members m where m\.project_id = p_project_id\) as members/i,
+  );
+});
+
+test("record owner count RPC is project-scoped and limited to project admins and members", () => {
+  const rpc = comparison.match(
+    /create or replace function public\.agrovision_comparison_record_owner_count[\s\S]*?\$\$;/i,
+  )?.[0];
+  assert.ok(rpc);
+  assert.match(rpc, /count\(distinct r\.owner_id\)::integer/i);
+  assert.match(rpc, /where r\.project_id = p_project_id/i);
+  assert.match(rpc, /agrovision_comparison_is_admin\(p_project_id\)/i);
+  assert.match(rpc, /m\.project_id = p_project_id[\s\S]*m\.user_id = auth\.uid\(\)/i);
+  assert.match(comparison, /revoke all on function public\.agrovision_comparison_record_owner_count\(text\) from public, anon/i);
+  assert.match(comparison, /grant execute on function public\.agrovision_comparison_record_owner_count\(text\) to authenticated/i);
+});
+
+test("focused record-owner migration does not alter RLS or stored publications", () => {
+  assert.match(recordOwnerCount, /count\(distinct r\.owner_id\)::integer/i);
+  assert.match(recordOwnerCount, /where r\.project_id = p_project_id/i);
+  assert.doesNotMatch(recordOwnerCount, /\b(alter table|create policy|drop policy|insert into|update public\.agrovision_comparison_publications)\b/i);
 });

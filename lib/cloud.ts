@@ -183,14 +183,29 @@ export type PublishedProjectComparison = { payload: ProjectComparisonData; publi
 export async function isProjectComparisonAdmin(): Promise<boolean> {
   return (await cloudRest<boolean>("rpc/agrovision_comparison_is_admin", { method: "POST", body: JSON.stringify({ p_project_id: PROJECT_ID }) })) === true;
 }
+async function withCurrentProjectRecordOwners<T extends { summary: { members: number } }>(data: T): Promise<T> {
+  const members = await cloudRest<number>("rpc/agrovision_comparison_record_owner_count", {
+    method: "POST",
+    body: JSON.stringify({ p_project_id: PROJECT_ID }),
+  });
+  if (!Number.isSafeInteger(members) || members < 0) {
+    throw new Error("Supabase devolvió un conteo inválido de integrantes con registros.");
+  }
+  return { ...data, summary: { ...data.summary, members } };
+}
 export async function readProjectComparisonPreview(): Promise<ProjectComparisonData> {
-  return cloudRest("rpc/agrovision_comparison_preview", { method: "POST", body: JSON.stringify({ p_project_id: PROJECT_ID }) });
+  const data = await cloudRest<ProjectComparisonData>("rpc/agrovision_comparison_preview", { method: "POST", body: JSON.stringify({ p_project_id: PROJECT_ID }) });
+  return withCurrentProjectRecordOwners(data);
 }
 export async function readPublishedProjectComparison(): Promise<PublishedProjectComparison | null> {
-  return cloudRest("rpc/agrovision_comparison_published", { method: "POST", body: JSON.stringify({ p_project_id: PROJECT_ID }) });
+  const data = await cloudRest<PublishedProjectComparison | null>("rpc/agrovision_comparison_published", { method: "POST", body: JSON.stringify({ p_project_id: PROJECT_ID }) });
+  return data
+    ? { ...data, payload: await withCurrentProjectRecordOwners(data.payload) }
+    : null;
 }
 export async function publishProjectComparison(): Promise<PublishedProjectComparison> {
-  return cloudRest("rpc/agrovision_comparison_publish", { method: "POST", body: JSON.stringify({ p_project_id: PROJECT_ID }) });
+  const data = await cloudRest<PublishedProjectComparison>("rpc/agrovision_comparison_publish", { method: "POST", body: JSON.stringify({ p_project_id: PROJECT_ID }) });
+  return { ...data, payload: await withCurrentProjectRecordOwners(data.payload) };
 }
 
 async function getCloudRows(): Promise<CloudRecordRow[]> {

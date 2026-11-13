@@ -146,6 +146,43 @@ test("cloud reads paginate beyond the default row limit", async () => {
   assert.equal((await cloud.readCloudRecords()).length, 1001);
 });
 
+test("team comparison counts distinct record owners instead of registered members", async () => {
+  let ownerCountCalls = 0;
+
+  globalThis.fetch = async (input, init) => {
+    const url = new URL(String(input));
+    const body = JSON.parse(String(init?.body));
+
+    if (url.pathname.endsWith("/rpc/agrovision_comparison_preview")) {
+      assert.equal(body.p_project_id, "rabanitos-2026");
+      return Response.json({ summary: { members: 2 } });
+    }
+
+    if (url.pathname.endsWith("/rpc/agrovision_comparison_published")) {
+      assert.equal(body.p_project_id, "rabanitos-2026");
+      return Response.json({
+        payload: { summary: { members: 2 } },
+        publishedAt: "2026-10-10T12:00:00Z",
+      });
+    }
+
+    if (url.pathname.endsWith("/rpc/agrovision_comparison_record_owner_count")) {
+      assert.equal(body.p_project_id, "rabanitos-2026");
+      ownerCountCalls++;
+      return Response.json(0);
+    }
+
+    throw new Error(`Unexpected request: ${url.pathname}`);
+  };
+
+  const preview = await cloud.readProjectComparisonPreview();
+  const published = await cloud.readPublishedProjectComparison();
+
+  assert.equal(preview.summary.members, 0);
+  assert.equal(published?.payload.summary.members, 0);
+  assert.equal(ownerCountCalls, 2);
+});
+
 test("cloud edit detects concurrent changes using conditional timestamp", async () => {
   globalThis.fetch = async (input, init) => {
     const url = new URL(String(input));
