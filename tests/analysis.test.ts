@@ -12,17 +12,20 @@ let requestCounter = 0;
 const request = (
   body: unknown,
   extra: Record<string, string> = {},
-) =>
-  new Request("https://agro.test/api/analyze-crop", {
+) => {
+  const headers = new Headers({
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${TEST_LOCAL_TOKEN}`,
+    "x-real-ip": `192.0.2.${(requestCounter++ % 240) + 1}`,
+  });
+  for (const [name, value] of Object.entries(extra)) headers.set(name, value);
+
+  return new Request("https://agro.test/api/analyze-crop", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${TEST_LOCAL_TOKEN}`,
-      "x-real-ip": `192.0.2.${(requestCounter++ % 240) + 1}`,
-      ...extra,
-    },
+    headers,
     body: JSON.stringify(body),
   });
+};
 
 // Test helper: all ordinary analysis calls use the local access-code mode.
 // Tests for missing/invalid credentials override Authorization explicitly.
@@ -118,8 +121,11 @@ test("validates cloud JWT against Supabase Auth before calling the AI provider",
 test("rejects invalid Supabase JWT without calling the AI provider", async () => {
   const original = globalThis.fetch;
   let providerCalled = false;
-  globalThis.fetch = async (url) => {
-    if (String(url).endsWith("/auth/v1/user")) return Response.json({ message: "invalid token" }, { status: 401 });
+  globalThis.fetch = async (url, options) => {
+    if (String(url).endsWith("/auth/v1/user")) {
+      assert.equal(new Headers(options?.headers).get("Authorization"), "Bearer invalid-cloud-jwt");
+      return Response.json({ message: "invalid token" }, { status: 401 });
+    }
     providerCalled = true;
     return Response.json({});
   };

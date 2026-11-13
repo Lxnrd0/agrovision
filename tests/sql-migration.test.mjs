@@ -19,7 +19,10 @@ test("hardening migration preserves existing CRUD RLS policies", () => {
 test("hardening migration does not change the existing members primary key", () => {
   assert.doesNotMatch(migration, /drop constraint[^;]*agrovision_members_pkey/i);
   assert.doesNotMatch(migration, /add constraint[^;]*primary key/i);
-  assert.match(migration, /agrovision_members_project_user_uidx/);
+  assert.match(
+    migration,
+    /create unique index agrovision_members_project_user_uidx\s+on public\.agrovision_members\s*\(project_id,\s*user_id\)/i,
+  );
 });
 
 test("hardening migration keeps member table direct access revoked", () => {
