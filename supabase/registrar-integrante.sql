@@ -24,7 +24,6 @@ begin
 
   insert into public.agrovision_members (project_id, user_id, member_name)
   values (v_project_id, v_member_id, v_member_name)
-  on conflict (project_id, user_id) do update
-    set member_name = excluded.member_name;
+  on conflict (project_id, user_id) do nothing;
 end;
 $$;

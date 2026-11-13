@@ -222,7 +222,8 @@ test("signed private photo URLs are cached per user and reused while valid", asy
     }
 
     if (url.pathname.endsWith("/rest/v1/agrovision_records")) {
-      return Response.json([row(photoRecord)]);
+      const offset = Number(url.searchParams.get("offset"));
+      return Response.json(offset === 0 ? [row(photoRecord)] : []);
     }
 
     throw new Error(
@@ -434,14 +435,16 @@ test("network errors are translated into a useful Supabase message", async () =>
 test("a temporary private-photo signing failure does not block loading the observation", async () => {
   const photoRecord = {
     ...fixture,
-    image: "supabase-storage://agrovision-photos/owner/photo.jpg",
+    image: "supabase-storage://agrovision-photos/owner/temporary-failure.jpg",
   };
 
+  const original = globalThis.fetch;
   globalThis.fetch = async (input) => {
     const url = new URL(String(input));
 
     if (url.pathname.endsWith("/rest/v1/agrovision_records")) {
-      return Response.json([row(photoRecord)]);
+      const offset = Number(url.searchParams.get("offset"));
+      return Response.json(offset === 0 ? [row(photoRecord)] : []);
     }
 
     if (url.pathname.includes("/storage/v1/object/sign/")) {
@@ -451,14 +454,18 @@ test("a temporary private-photo signing failure does not block loading the obser
     throw new Error(`Unexpected request: ${url.pathname}`);
   };
 
-  const records = await cloud.readCloudRecords();
+  try {
+    const records = await cloud.readCloudRecords();
 
-  assert.equal(records.length, 1);
-  assert.equal(records[0].id, photoRecord.id);
+    assert.equal(records.length, 1);
+    assert.equal(records[0].id, photoRecord.id);
 
-  assert.equal(
-    records[0].image,
-    photoRecord.image,
-    "keep the private storage reference so a later refresh can retry"
-  );
+    assert.equal(
+      records[0].image,
+      photoRecord.image,
+      "keep the private storage reference so a later refresh can retry"
+    );
+  } finally {
+    globalThis.fetch = original;
+  }
 });

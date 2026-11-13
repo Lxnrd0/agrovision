@@ -4,9 +4,12 @@ on:
   push:
     branches:
       - main
+      - 'hardening/**'
   pull_request:
     branches:
       - main
+      - 'hardening/**'
+  workflow_dispatch:
 
 permissions:
   contents: read

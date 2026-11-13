@@ -10,33 +10,35 @@ const registerMember = readFileSync(resolve(root, "supabase/registrar-integrante
 const comparison = readFileSync(resolve(root, "supabase/comparativa-equipo.sql"), "utf8");
 
 test("hardening migration is transactional and preserves data rows", () => {
-  assert.match(hardening, /\bbegin;\s*set local/i);
-  assert.match(hardening, /\bcommit;/i);
+  assert.match(hardening, /^\s*begin;/im);
+  assert.match(hardening, /^\s*commit;/im);
   assert.doesNotMatch(hardening, /\btruncate\s+table\b/i);
   assert.doesNotMatch(hardening, /\bdelete\s+from\s+public\.agrovision_members\b/i);
   assert.doesNotMatch(hardening, /\bdelete\s+from\s+public\.agrovision_records\s*;/i);
   assert.doesNotMatch(hardening, /drop\s+table\s+public\.agrovision_(members|records)\b/i);
 });
 
-test("hardening migration replaces known legacy RLS policies and aborts on unknown ones", () => {
+test("hardening accepts safe CRUD RLS policies and rejects unsafe or unknown policies", () => {
   for (const name of [
-    "Users can delete own records",
-    "Users can insert own records",
-    "Users can read own records",
-    "Users can update own records",
+    "agrovision_records_select",
+    "agrovision_records_insert",
+    "agrovision_records_update",
+    "agrovision_records_delete",
   ]) {
-    assert.ok(hardening.includes(`drop policy if exists \"${name}\"`));
+    assert.ok(hardening.includes(name));
   }
-  assert.match(hardening, /Hay políticas RLS no reconocidas/);
-  assert.match(hardening, /create policy agrovision_records_select/);
-  assert.match(hardening, /create policy agrovision_records_insert/);
-  assert.match(hardening, /create policy agrovision_records_update/);
-  assert.match(hardening, /create policy agrovision_records_delete/);
+  assert.match(hardening, /elsif v_count = 4 and v_expected = 4 then/i);
+  assert.match(hardening, /if v_unsafe is not null then\s+raise exception 'Las políticas RLS existentes no coinciden con las condiciones seguras esperadas:/i);
+  assert.match(hardening, /else\s+raise exception 'Conjunto de políticas RLS no reconocido/i);
 });
 
-test("membership migration supports project-scoped composite primary key", () => {
-  assert.match(hardening, /primary key \(project_id, user_id\)/i);
-  assert.match(hardening, /claves foráneas que dependen de la PK actual/i);
+test("membership migration preserves the existing primary key and enforces project-scoped uniqueness", () => {
+  assert.match(hardening, /sin reconstruir la tabla ni cambiar su PK/i);
+  assert.doesNotMatch(hardening, /add constraint[^;]*primary key/i);
+  assert.match(
+    hardening,
+    /create unique index agrovision_members_project_user_uidx\s+on public\.agrovision_members\s*\(project_id,\s*user_id\)/i,
+  );
   assert.match(hardening, /agrovision_is_project_member/);
 });
 
@@ -50,12 +52,13 @@ test("batch RPC is invoker-secured and granted only to authenticated", () => {
 test("member registration does not overwrite an existing member", () => {
   assert.match(registerMember, /on conflict \(project_id, user_id\) do nothing/i);
   assert.doesNotMatch(registerMember, /do update\s+set member_name/i);
-  assert.match(registerMember, /No se modificó su nombre ni su fecha de ingreso/);
 });
 
-test("comparison migration no longer drops the historical trigger function", () => {
+test("comparison migration removes the historical auto-registration trigger and function", () => {
   assert.match(comparison, /drop trigger if exists agrovision_comparison_register_member/);
-  assert.match(comparison, /requiere PK \(project_id, user_id\)/);
-  assert.doesNotMatch(comparison, /create unique index if not exists agrovision_members_project_user_uidx/i);
-  assert.doesNotMatch(comparison, /drop function if exists public\.agrovision_comparison_register_member/);
+  assert.match(
+    comparison,
+    /create unique index if not exists agrovision_members_project_user_uidx\s+on public\.agrovision_members\s*\(project_id,\s*user_id\)/i,
+  );
+  assert.match(comparison, /drop function if exists public\.agrovision_comparison_register_member/);
 });

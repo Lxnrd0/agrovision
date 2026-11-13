@@ -45,7 +45,6 @@ import { validateRecord } from "@/lib/tracking";
 import {
   getCloudSession,
   isCloudConfigured,
-  migrateLocalRecordsToCloud,
   mergeBackupIntoCloud,
   mutateCloudRecords,
   readCloudRecords,
@@ -101,7 +100,6 @@ function currentTime() {
     minute: "2-digit",
   });
 }
-
 
 type DashboardProps = {
   userEmail?: string;
@@ -166,8 +164,6 @@ export default function Dashboard({ userEmail, onLogout, localMode = false }: Da
       return () => { active = false; };
     }
     setComparisonAccessReady(false);
-    // El panel está disponible para el equipo en modo nube:
-    // el administrador ve la vista previa y los integrantes solo la última publicación.
     void isProjectComparisonAdmin()
       .then((allowed) => {
         if (!active) return;
@@ -207,9 +203,7 @@ export default function Dashboard({ userEmail, onLogout, localMode = false }: Da
       try {
         let initial: FieldRecord[];
         if (cloudMode) {
-          // Importa observaciones reales de este navegador una sola vez por ID,
-          // y excluye los registros demostrativos del proyecto original.
-          initial = await migrateLocalRecordsToCloud();
+          initial = await readCloudRecords();
         } else {
           initial = await initialiseRecords();
         }
@@ -275,7 +269,6 @@ export default function Dashboard({ userEmail, onLogout, localMode = false }: Da
       };
     }
 
-    // Polling de la misma cuenta en otros dispositivos. Cada cuenta es privada.
     let cloudPoll: number | undefined;
     if (cloudMode) {
       cloudPoll = window.setInterval(() => {
@@ -287,18 +280,13 @@ export default function Dashboard({ userEmail, onLogout, localMode = false }: Da
               setLastSync(currentTime());
             }
           })
-          .catch(() => {
-            // Evita interrumpir el uso si una comprobación periódica falla.
-          });
+          .catch(() => {});
       }, 12000);
     }
 
     void refreshEngine();
 
-    if (
-      process.env.NODE_ENV === "production" &&
-      "serviceWorker" in navigator
-    ) {
+    if (process.env.NODE_ENV === "production" && "serviceWorker" in navigator) {
       navigator.serviceWorker.register("/sw.js").catch(() => {});
     }
 
@@ -671,7 +659,6 @@ export default function Dashboard({ userEmail, onLogout, localMode = false }: Da
             Guía de uso
             <ArrowUpRight size={14} />
           </button>
-
         </div>
       </aside>
 
@@ -715,180 +702,178 @@ export default function Dashboard({ userEmail, onLogout, localMode = false }: Da
               type="button"
               className="icon-button"
               title={dark ? "Cambiar a tema claro" : "Cambiar a tema oscuro"}
-              aria-label={
-                dark ? "Cambiar a tema claro" : "Cambiar a tema oscuro"
-              }
+              aria-label={dark ? "Cambiar a tema claro" : "Cambiar a tema oscuro"}
               onClick={() => setDark(!dark)}
             >
               {dark ? <Sun size={19} /> : <Moon size={19} />}
             </button>
 
             {userEmail && (
-            <>
-              <span className="account-email" title={userEmail}>{userEmail}</span>
-              <button type="button" className="logout-button" onClick={onLogout} title="Cerrar sesión">Salir</button>
-            </>
-          )}
-          {!userEmail && <span className="profile-avatar">AG</span>}
+              <>
+                <span className="account-email" title={userEmail}>{userEmail}</span>
+                <button type="button" className="logout-button" onClick={onLogout} title="Cerrar sesión">Salir</button>
+              </>
+            )}
+            {!userEmail && <span className="profile-avatar">AG</span>}
           </div>
         </header>
 
         <main>
           {view !== "comparison" && (
             <>
-          <div className="page-heading">
-            <div>
-              <div className="page-eyebrow">
-                <span className="mini-line" />
-                {" "}REGISTRO Y MONITOREO INTELIGENTE DE CULTIVOS
-              </div>
-              <h1>
-                Monitoreo de rabanito<span>.</span>
-              </h1>
-              <p>
-                Registra y consulta las observaciones de tu planta.
-              </p>
-            </div>
-
-            <div className="heading-actions">
-              <div className="export-wrap">
-                <button
-                  type="button"
-                  className="button secondary"
-                  aria-expanded={exportOpen}
-                  onClick={() => setExportOpen(!exportOpen)}
-                >
-                  <ArrowDownToLine size={17} />
-                  Exportar
-                  <ChevronDown size={14} />
-                </button>
-
-                {exportOpen && (
-                  <div className="export-menu">
-                    <button
-                      type="button"
-                      onClick={() => void download("csv")}
-                    >
-                      <FileSpreadsheet size={17} />
-                      Monitoreo en CSV
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void download("pdf")}
-                    >
-                      <FileText size={17} />
-                      Reporte en PDF
-                    </button>
+              <div className="page-heading">
+                <div>
+                  <div className="page-eyebrow">
+                    <span className="mini-line" />
+                    {" "}REGISTRO Y MONITOREO INTELIGENTE DE CULTIVOS
                   </div>
-                )}
+                  <h1>
+                    Monitoreo de rabanito<span>.</span>
+                  </h1>
+                  <p>
+                    Registra y consulta las observaciones de tu planta.
+                  </p>
+                </div>
+
+                <div className="heading-actions">
+                  <div className="export-wrap">
+                    <button
+                      type="button"
+                      className="button secondary"
+                      aria-expanded={exportOpen}
+                      onClick={() => setExportOpen(!exportOpen)}
+                    >
+                      <ArrowDownToLine size={17} />
+                      Exportar
+                      <ChevronDown size={14} />
+                    </button>
+
+                    {exportOpen && (
+                      <div className="export-menu">
+                        <button
+                          type="button"
+                          onClick={() => void download("csv")}
+                        >
+                          <FileSpreadsheet size={17} />
+                          Monitoreo en CSV
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void download("pdf")}
+                        >
+                          <FileText size={17} />
+                          Reporte en PDF
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    className="button primary"
+                    disabled={!ready}
+                    onClick={() => setForm("new")}
+                  >
+                    <Plus size={18} />
+                    Nueva observación
+                  </button>
+                </div>
               </div>
 
-              <button
-                type="button"
-                className="button primary"
-                disabled={!ready}
-                onClick={() => setForm("new")}
-              >
-                <Plus size={18} />
-                Nueva observación
-              </button>
-            </div>
-          </div>
+              <div className="stats-grid">
+                <div className="stat-card">
+                  <div className="stat-top">
+                    <span>Observaciones registradas</span>
+                    <span className="stat-icon">
+                      <ScanLine size={19} />
+                    </span>
+                  </div>
+                  <div className="stat-value">
+                    {String(stats.count).padStart(2, "0")}
+                    <span className="stat-pill">BITÁCORA</span>
+                  </div>
+                  <p>Registros guardados</p>
+                </div>
 
-          <div className="stats-grid">
-            <div className="stat-card">
-              <div className="stat-top">
-                <span>Observaciones registradas</span>
-                <span className="stat-icon">
-                  <ScanLine size={19} />
+                <div className="stat-card">
+                  <div className="stat-top">
+                    <span>Observaciones sanas</span>
+                    <span className="stat-icon">
+                      <ShieldCheck size={19} />
+                    </span>
+                  </div>
+                  <div className="stat-value">
+                    {stats.assessed ? stats.health.toFixed(1) : "—"}
+                    <small>%</small>
+                    <span className="stat-spark">
+                      <Activity size={45} strokeWidth={1.4} />
+                    </span>
+                  </div>
+                  <p>
+                    {stats.assessed} observaciones con estado registrado
+                  </p>
+                </div>
+
+                <div className="stat-card">
+                  <div className="stat-top">
+                    <span>Diámetro promedio medido</span>
+                    <span className="stat-icon">
+                      <Ruler size={19} />
+                    </span>
+                  </div>
+                  <div className="stat-value">
+                    {stats.measured ? stats.diameter.toFixed(1) : "—"}
+                    <small>cm</small>
+                  </div>
+                  <p>
+                    {stats.measured} observaciones con diámetro medido
+                  </p>
+                </div>
+
+                <div className="stat-card">
+                  <div className="stat-top">
+                    <span>Lotes en seguimiento</span>
+                    <span className="stat-icon">
+                      <FlaskConical size={19} />
+                    </span>
+                  </div>
+                  <div className="stat-value">
+                    {String(stats.zones).padStart(2, "0")}
+                    <span className="lot-markers">
+                      {['A', 'B', 'C']
+                        .slice(0, Math.min(stats.zones, 3))
+                        .map((label) => (
+                          <i key={label}>{label}</i>
+                        ))}
+                    </span>
+                  </div>
+                  <p>Lotes registrados</p>
+                </div>
+              </div>
+
+              {ready && (
+                <BackupControls
+                  records={records}
+                  notify={notify}
+                  restoreRecords={cloudMode ? mergeBackupIntoCloud : undefined}
+                  onRestored={(next) => {
+                    setRecords(next);
+                    setLastSync(currentTime());
+                    channel.current?.postMessage("changed");
+                    setView("history");
+                  }}
+                />
+              )}
+
+              <div className="view-bar view-bar-status">
+                <span className="sync-label">
+                  {online ? <Cloud size={15} /> : <WifiOff size={15} />}
+                  {" "}
+                  {lastSync
+                    ? `${cloudMode ? "Sincronizado en la nube" : "Guardado local"} · ${lastSync}`
+                    : "Preparando bitácora"}
                 </span>
               </div>
-              <div className="stat-value">
-                {String(stats.count).padStart(2, "0")}
-                <span className="stat-pill">BITÁCORA</span>
-              </div>
-              <p>Registros guardados</p>
-            </div>
-
-            <div className="stat-card">
-              <div className="stat-top">
-                <span>Observaciones sanas</span>
-                <span className="stat-icon">
-                  <ShieldCheck size={19} />
-                </span>
-              </div>
-              <div className="stat-value">
-                {stats.assessed ? stats.health.toFixed(1) : "—"}
-                <small>%</small>
-                <span className="stat-spark">
-                  <Activity size={45} strokeWidth={1.4} />
-                </span>
-              </div>
-              <p>
-                {stats.assessed} observaciones con estado registrado
-              </p>
-            </div>
-
-            <div className="stat-card">
-              <div className="stat-top">
-                <span>Diámetro promedio medido</span>
-                <span className="stat-icon">
-                  <Ruler size={19} />
-                </span>
-              </div>
-              <div className="stat-value">
-                {stats.measured ? stats.diameter.toFixed(1) : "—"}
-                <small>cm</small>
-              </div>
-              <p>
-                {stats.measured} observaciones con diámetro medido
-              </p>
-            </div>
-
-            <div className="stat-card">
-              <div className="stat-top">
-                <span>Lotes en seguimiento</span>
-                <span className="stat-icon">
-                  <FlaskConical size={19} />
-                </span>
-              </div>
-              <div className="stat-value">
-                {String(stats.zones).padStart(2, "0")}
-                <span className="lot-markers">
-                  {["A", "B", "C"]
-                    .slice(0, Math.min(stats.zones, 3))
-                    .map((label) => (
-                      <i key={label}>{label}</i>
-                    ))}
-                </span>
-              </div>
-              <p>Lotes registrados</p>
-            </div>
-          </div>
-
-          {ready && (
-            <BackupControls
-              records={records}
-              notify={notify}
-              restoreRecords={cloudMode ? mergeBackupIntoCloud : undefined}
-              onRestored={(next) => {
-                setRecords(next);
-                setLastSync(currentTime());
-                channel.current?.postMessage("changed");
-                setView("history");
-              }}
-            />
-          )}
-
-          <div className="view-bar view-bar-status">
-            <span className="sync-label">
-              {online ? <Cloud size={15} /> : <WifiOff size={15} />}
-              {" "}
-              {lastSync
-                ? `${cloudMode ? "Sincronizado en la nube" : "Guardado local"} · ${lastSync}`
-                : "Preparando bitácora"}
-            </span>
-          </div>
             </>
           )}
 
